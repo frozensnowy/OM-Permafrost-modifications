@@ -3,7 +3,8 @@ OmniMIDI settings loading system
 */
 #pragma once
 
-void SetBufferPointers() {
+void SetBufferPointers()
+{
 	_PrsData = HyperMode ? ParseDataHyper : ParseData;
 	_PforBASSMIDI = HyperMode ? PrepareForBASSMIDIHyper : PrepareForBASSMIDI;
 	_PlayBufData = HyperMode ? PlayBufferedDataHyper : PlayBufferedData;
@@ -12,7 +13,8 @@ void SetBufferPointers() {
 	_BMSEs = BASS_MIDI_StreamEvents;
 }
 
-void UnsetBufferPointers() {
+void UnsetBufferPointers()
+{
 	_PrsData = DummyParseData;
 	_PforBASSMIDI = DummyPrepareForBASSMIDI;
 	_PlayBufData = DummyPlayBufData;
@@ -21,7 +23,8 @@ void UnsetBufferPointers() {
 	_BMSEs = DummyBMSEs;
 }
 
-void InitializeOrUpdateEffects() {
+void InitializeOrUpdateEffects()
+{
 	if (!ChVolume && ManagedSettings.CurrentEngine != AUDTOWAV)
 	{
 		ChVolume = BASS_ChannelSetFX(OMStream, BASS_FX_VOLUME, 1);
@@ -29,7 +32,8 @@ void InitializeOrUpdateEffects() {
 		PrintMessageToDebugLog("InitializeOrUpdateEffects", "Applied volume HFX to OMStream.");
 	}
 
-	if (ManagedSettings.CurrentEngine != AUDTOWAV) {
+	if (ManagedSettings.CurrentEngine != AUDTOWAV)
+	{
 		ChVolumeStruct.fCurrent = 1.0f;
 		ChVolumeStruct.fTarget = SynthVolume;
 		ChVolumeStruct.fTime = 0.0f;
@@ -39,7 +43,8 @@ void InitializeOrUpdateEffects() {
 		PrintMessageToDebugLog("InitializeOrUpdateEffects", "Applied volume settings.");
 	}
 
-	if (ManagedSettings.ReverbOverride) {
+	if (ManagedSettings.ReverbOverride)
+	{
 		if (!ChReverb)
 		{
 			ChReverb = BASS_ChannelSetFX(OMStream, BASS_FX_DX8_REVERB, 2);
@@ -47,7 +52,8 @@ void InitializeOrUpdateEffects() {
 			PrintMessageToDebugLog("InitializeOrUpdateEffects", "Applied reverb HFX to OMStream.");
 		}
 
-		if (ChReverb) {
+		if (ChReverb)
+		{
 			ChReverbStruct.fInGain = RoundFloat(((float)ManagedSettings.ReverbInGain / 1000.0f) - 96.0f);
 			ChReverbStruct.fReverbMix = RoundFloat(((float)ManagedSettings.ReverbMix / 1000.0f) - 96.0f);
 			ChReverbStruct.fReverbTime = RoundFloat((float)ManagedSettings.ReverbTime / 1000.0f);
@@ -62,7 +68,8 @@ void InitializeOrUpdateEffects() {
 			PrintMessageToDebugLog("InitializeOrUpdateEffects", "Applied reverb settings.");
 		}
 	}
-	else {
+	else
+	{
 		if (ChReverb)
 		{
 			BASS_ChannelRemoveFX(OMStream, ChReverb);
@@ -72,7 +79,8 @@ void InitializeOrUpdateEffects() {
 		}
 	}
 
-	if (ManagedSettings.ChorusOverride) {
+	if (ManagedSettings.ChorusOverride)
+	{
 		if (!ChChorus)
 		{
 			ChChorus = BASS_ChannelSetFX(OMStream, BASS_FX_DX8_CHORUS, 3);
@@ -80,7 +88,8 @@ void InitializeOrUpdateEffects() {
 			PrintMessageToDebugLog("InitializeOrUpdateEffects", "Applied chorus HFX to OMStream.");
 		}
 
-		if (ChChorus) {
+		if (ChChorus)
+		{
 			ChChorusStruct.fWetDryMix = RoundFloat((float)ManagedSettings.ChorusWetDryMix);
 			ChChorusStruct.fDepth = RoundFloat((float)ManagedSettings.ChorusDepth);
 			ChChorusStruct.fFeedback = RoundFloat((float)(ManagedSettings.ChorusFeedback) - 100.0f);
@@ -101,7 +110,8 @@ void InitializeOrUpdateEffects() {
 			PrintMessageToDebugLog("InitializeOrUpdateEffects", "Applied chorus settings.");
 		}
 	}
-	else {
+	else
+	{
 		if (ChChorus)
 		{
 			BASS_ChannelRemoveFX(OMStream, ChChorus);
@@ -111,7 +121,8 @@ void InitializeOrUpdateEffects() {
 		}
 	}
 
-	if (ManagedSettings.EchoOverride) {
+	if (ManagedSettings.EchoOverride)
+	{
 		if (!ChEcho)
 		{
 			ChEcho = BASS_ChannelSetFX(OMStream, BASS_FX_DX8_ECHO, 4);
@@ -119,7 +130,8 @@ void InitializeOrUpdateEffects() {
 			PrintMessageToDebugLog("InitializeOrUpdateEffects", "Applied echo HFX to OMStream.");
 		}
 
-		if (ChEcho) {
+		if (ChEcho)
+		{
 			ChEchoStruct.fWetDryMix = RoundFloat((float)ManagedSettings.EchoWetDryMix);
 			ChEchoStruct.fFeedback = RoundFloat((float)ManagedSettings.EchoFeedback);
 			ChEchoStruct.fLeftDelay = RoundFloat((float)ManagedSettings.EchoLeftDelay);
@@ -136,7 +148,8 @@ void InitializeOrUpdateEffects() {
 			PrintMessageToDebugLog("InitializeOrUpdateEffects", "Applied echo settings.");
 		}
 	}
-	else {
+	else
+	{
 		if (ChEcho)
 		{
 			BASS_ChannelRemoveFX(OMStream, ChEcho);
@@ -147,23 +160,28 @@ void InitializeOrUpdateEffects() {
 	}
 }
 
-void ResetSynth(BOOL SwitchingBufferMode, BOOL ModeReset) {
-	if (SwitchingBufferMode) {
+void ResetSynth(BOOL SwitchingBufferMode, BOOL ModeReset)
+{
+	if (SwitchingBufferMode)
+	{
 		EVBuffer.ReadHead = 0;
 		EVBuffer.WriteHead = 0;
 		memset(EVBuffer.Buffer, 0, sizeof(EVBuffer.Buffer));
 		PrintMessageToDebugLog("ResetSynth", "EVBuffer has been reset.");
 	}
 
-	if (ModeReset) {
+	if (ModeReset)
+	{
 		// Wait for the heads to align, to avoid crashes
 		UnsetBufferPointers();
 		_BMSE(OMStream, 0, MIDI_EVENT_SYSTEMEX, MIDI_SYSTEM_XG);
 		PrintMessageToDebugLog("ResetSynth", "Sent SysEx to BASSMIDI.");
 		SetBufferPointers();
 	}
-	else {
-		for (int ch = 0; ch < 16; ch++) {
+	else
+	{
+		for (int ch = 0; ch < 16; ch++)
+		{
 			_BMSE(OMStream, ch, MIDI_EVENT_NOTESOFF, NULL);
 			_BMSE(OMStream, ch, MIDI_EVENT_SOUNDOFF, NULL);
 		}
@@ -171,28 +189,35 @@ void ResetSynth(BOOL SwitchingBufferMode, BOOL ModeReset) {
 	}
 }
 
-void OpenRegistryKey(RegKey &hKey, LPCWSTR hKeyDir, BOOL Mandatory) {
+void OpenRegistryKey(RegKey &hKey, LPCWSTR hKeyDir, BOOL Mandatory)
+{
 	// If the key isn't ready, open it again
-	if (hKey.Status != KEY_READY && !hKey.Address) {
+	if (hKey.Status != KEY_READY && !hKey.Address)
+	{
 		// Open the key
 		hKey.Status = RegOpenKeyEx(HKEY_CURRENT_USER, hKeyDir, 0, KEY_ALL_ACCESS, &hKey.Address);
 
 		// If the key failed to open, throw a crash (If needed)
-		if (hKey.Status != KEY_READY && Mandatory) _THROWCRASH;
+		if (hKey.Status != KEY_READY && Mandatory)
+			_THROWCRASH;
 	}
 }
 
-void CloseRegistryKey(RegKey &hKey) {
-	if (hKey.Address) {
+void CloseRegistryKey(RegKey &hKey)
+{
+	if (hKey.Address)
+	{
 		// Try to flush the key
 		LSTATUS Action = RegFlushKey(hKey.Address);
 		// If the key can't be flushed, throw a crash
-		if (Action != ERROR_SUCCESS) _THROWCRASH;
+		if (Action != ERROR_SUCCESS)
+			_THROWCRASH;
 
 		// Try to close the key
 		Action = RegCloseKey(hKey.Address);
 		// If the key can't be closed, throw a crash
-		if (Action != ERROR_SUCCESS) _THROWCRASH;
+		if (Action != ERROR_SUCCESS)
+			_THROWCRASH;
 
 		// Everything is fine, mark the key as closed
 		hKey.Status = KEY_CLOSED;
@@ -200,9 +225,11 @@ void CloseRegistryKey(RegKey &hKey) {
 	}
 }
 
-BOOL CloseThread(Thread* thread) {
+BOOL CloseThread(Thread *thread)
+{
 	// Wait for the thread to finish its job
-	if (thread->ThreadHandle) {
+	if (thread->ThreadHandle)
+	{
 		PrintMessageToDebugLog("CloseThread", "Waiting for passed thread to finish...");
 		WaitForSingleObject(thread->ThreadHandle, INFINITE);
 
@@ -222,11 +249,13 @@ BOOL CloseThread(Thread* thread) {
 	return FALSE;
 }
 
-void DLLLoadError(LPWSTR DLL, int ErrCode) {
-	TCHAR Error[NTFS_MAX_PATH] = { 0 };
+void DLLLoadError(LPWSTR DLL, int ErrCode)
+{
+	TCHAR Error[NTFS_MAX_PATH] = {0};
 
 	// Print to log
-	if (DebugLog != nullptr) {
+	if (DebugLog != nullptr)
+	{
 		PrintCurrentTime();
 		fprintf(DebugLog, "ERROR | Unable to load the following DLL: %s\n", DLL);
 	}
@@ -236,7 +265,8 @@ void DLLLoadError(LPWSTR DLL, int ErrCode) {
 	MessageBoxW(NULL, Error, L"OmniMIDI - DLL load error", MB_ICONERROR | MB_SYSTEMMODAL | MB_OK);
 }
 
-long long TimeNow() {
+long long TimeNow()
+{
 	LARGE_INTEGER now;
 	LARGE_INTEGER s_frequency;
 	QueryPerformanceCounter(&now);
@@ -244,22 +274,27 @@ long long TimeNow() {
 	return (1000LL * now.QuadPart) / s_frequency.QuadPart;
 }
 
-BOOL LoadSoundfont(int whichsf) {
+BOOL LoadSoundfont(int whichsf)
+{
 	BOOL RET = FALSE;
 	BOOL V = (!whichsf) ? TRUE : FALSE;
 	DWORD CurrentList = (whichsf + 1);
 
 	memset(ListToLoad, 0, sizeof(ListToLoad));
 
-	if (GetFolderPath(V ? FOLDERID_RoamingAppData : FOLDERID_Profile, V ? CSIDL_APPDATA : CSIDL_PROFILE, ListToLoad, sizeof(ListToLoad))) {
+	if (GetFolderPath(V ? FOLDERID_RoamingAppData : FOLDERID_Profile, V ? CSIDL_APPDATA : CSIDL_PROFILE, ListToLoad, sizeof(ListToLoad)))
+	{
 		UnsetBufferPointers();
 
 		PrintMessageToDebugLog("LoadSoundFontFunc", "Loading soundfont list...");
 
-		if (V) swprintf_s(ListToLoad + wcslen(ListToLoad), NTFS_MAX_PATH, CSFFileTemplate);
-		else swprintf_s(ListToLoad + wcslen(ListToLoad), NTFS_MAX_PATH, OMFileTemplate, L"lists", OMLetters[whichsf - 1], L"omlist");
-		
-		if (PathFileExists(ListToLoad)) {
+		if (V)
+			swprintf_s(ListToLoad + wcslen(ListToLoad), NTFS_MAX_PATH, CSFFileTemplate);
+		else
+			swprintf_s(ListToLoad + wcslen(ListToLoad), NTFS_MAX_PATH, OMFileTemplate, L"lists", OMLetters[whichsf - 1], L"omlist");
+
+		if (PathFileExists(ListToLoad))
+		{
 			PrintMessageWToDebugLog(L"LoadSoundFontFunc", ListToLoad);
 
 			OpenRegistryKey(SFDynamicLoader, L"Software\\OmniMIDI\\Watchdog", TRUE);
@@ -268,7 +303,8 @@ BOOL LoadSoundfont(int whichsf) {
 			RET = FontLoader(ListToLoad);
 		}
 
-		if (RET) {
+		if (RET)
+		{
 			ManagedDebugInfo.CurrentSFList = CurrentList;
 			PrintMessageToDebugLog("LoadSoundFontFunc", "Done!");
 		}
@@ -279,25 +315,53 @@ BOOL LoadSoundfont(int whichsf) {
 	return RET;
 }
 
-bool LoadSoundfontStartup() {
-	wchar_t CurrentAppList[NTFS_MAX_PATH] = { 0 };
-	wchar_t CurrentString[NTFS_MAX_PATH] = { 0 };
+bool LoadSoundfontStartup()
+{
+	// First, try Permafrost service for SoundFont list
+	PrintMessageToDebugLog("LoadSoundfontStartup", "Checking Permafrost service for SoundFont list...");
+	std::wstring permafrostListData;
+	if (RequestSoundFontListFromPermafrost(AppNameW, AppPathW, GetCurrentProcessId(), permafrostListData))
+	{
+		PrintMessageToDebugLog("LoadSoundfontStartup", "Received SoundFont list from Permafrost. Loading...");
+		UnsetBufferPointers();
+		if (FontLoaderFromString(permafrostListData))
+		{
+			PrintMessageToDebugLog("LoadSoundfontStartup", "Successfully loaded SoundFonts from Permafrost.");
+			ManagedDebugInfo.CurrentSFList = 99; // Permafrost-loaded list marker
+			SetBufferPointers();
+			return TRUE;
+		}
+		SetBufferPointers();
+		PrintMessageToDebugLog("LoadSoundfontStartup", "Failed to load SoundFonts from Permafrost data, falling back...");
+	}
+	else
+	{
+		PrintMessageToDebugLog("LoadSoundfontStartup", "Permafrost not available, using file-based lookup...");
+	}
 
-	for (int i = 0; i < 7; ++i) {
+	// Fallback: Check .applist files for app-specific SoundFont lists
+	wchar_t CurrentAppList[NTFS_MAX_PATH] = {0};
+	wchar_t CurrentString[NTFS_MAX_PATH] = {0};
+
+	for (int i = 0; i < 7; ++i)
+	{
 		memset(CurrentAppList, 0, sizeof(CurrentAppList));
-		if (GetFolderPath(FOLDERID_Profile, CSIDL_PROFILE, CurrentAppList, sizeof(CurrentAppList))) {
+		if (GetFolderPath(FOLDERID_Profile, CSIDL_PROFILE, CurrentAppList, sizeof(CurrentAppList)))
+		{
 			swprintf_s(CurrentAppList + wcslen(CurrentAppList), NTFS_MAX_PATH, OMFileTemplate, L"applists", OMLetters[i], L"applist");
 
 			PrintMessageWToDebugLog(L"LoadSoundfontStartup", CurrentAppList);
 
 			std::wifstream AppList(CurrentAppList);
-			if (AppList) {
+			if (AppList)
+			{
 				AppList.imbue(UTF8Support);
 				while (AppList.getline(CurrentString, sizeof(CurrentString) / sizeof(*CurrentString)))
 				{
 					PrintMessageWToDebugLog(L"LoadSoundfontStartup", CurrentString);
 
-					if (!_wcsicmp(AppNameW, CurrentString) || !_wcsicmp(AppPathW, CurrentString)) {
+					if (!_wcsicmp(AppNameW, CurrentString) || !_wcsicmp(AppPathW, CurrentString))
+					{
 						PrintMessageToDebugLog("LoadSoundfontStartup", "Found list. Loading...");
 						LoadSoundfont(i + 1);
 						return TRUE;
@@ -305,20 +369,23 @@ bool LoadSoundfontStartup() {
 				}
 			}
 		}
-		else break;
+		else
+			break;
 	}
 
 	PrintMessageToDebugLog("LoadSoundfontStartup", "No default startup list found. Continuing...");
 	return FALSE;
 }
 
-bool LoadLib(OMLib* Target) {
+bool LoadLib(OMLib *Target)
+{
 	// Check if library is loaded
-	if (Target->Lib == nullptr) {
+	if (Target->Lib == nullptr)
+	{
 		PWSTR path = NULL;
-		wchar_t SysDir[MAX_PATH] = { 0 };
-		wchar_t DLLPath[MAX_PATH] = { 0 };
-		WIN32_FIND_DATA FD = { 0 };
+		wchar_t SysDir[MAX_PATH] = {0};
+		wchar_t DLLPath[MAX_PATH] = {0};
+		WIN32_FIND_DATA FD = {0};
 
 		// If not, begin loading process
 		PrintLoadedDLLToDebugLog(Target->Path, "No library has been found in memory. The driver will now load the DLL...");
@@ -333,7 +400,8 @@ bool LoadLib(OMLib* Target) {
 			return (Target->AppOwnDLL = true);
 		}
 		// Otherwise, let's load our own
-		else {
+		else
+		{
 			// Let's get the system path
 			bool Success = GetFolderPath(FOLDERID_System, CSIDL_SYSTEM, SysDir, sizeof(SysDir));
 
@@ -349,11 +417,13 @@ bool LoadLib(OMLib* Target) {
 
 			int swp = swprintf_s(DLLPath, MAX_PATH, L"%s\\OmniMIDI\\%s.dll\0", SysDir, Target->Path);
 
-			if (FindFirstFile(DLLPath, &FD) == INVALID_HANDLE_VALUE) {
+			if (FindFirstFile(DLLPath, &FD) == INVALID_HANDLE_VALUE)
+			{
 				PrintLoadedDLLToDebugLog(Target->Path, "OmniMIDI couldn't find the required library!!!");
 				return false;
 			}
-			else {
+			else
+			{
 				Target->Lib = LoadLibrary(DLLPath);
 
 				if (Target->Lib == nullptr)
@@ -364,14 +434,17 @@ bool LoadLib(OMLib* Target) {
 			}
 		}
 	}
-	else PrintLoadedDLLToDebugLog(Target->Path, "Library already in memory.");
+	else
+		PrintLoadedDLLToDebugLog(Target->Path, "Library already in memory.");
 
 	return TRUE;
 }
 
-bool UnloadLib(OMLib* Target) {
+bool UnloadLib(OMLib *Target)
+{
 	// Check if library is already loaded
-	if (Target->Lib != nullptr) {
+	if (Target->Lib != nullptr)
+	{
 		// Check if the library was originally loaded by the
 		// hosting MIDI application, this happens sometimes.
 		if (Target->AppOwnDLL)
@@ -393,34 +466,42 @@ bool UnloadLib(OMLib* Target) {
 	return true;
 }
 
-void LoadPluginModule(HPLUGIN* Target, wchar_t* RequestedLib) {
-	wchar_t SysDir[MAX_PATH] = { 0 };
-	wchar_t DLLPath[MAX_PATH] = { 0 };
+void LoadPluginModule(HPLUGIN *Target, wchar_t *RequestedLib)
+{
+	wchar_t SysDir[MAX_PATH] = {0};
+	wchar_t DLLPath[MAX_PATH] = {0};
 
-	if (!(*Target)) {
+	if (!(*Target))
+	{
 		PrintLoadedDLLToDebugLog(RequestedLib, "No plugin has been found in memory. The driver will now load the DLL...");
 
-		if (GetFolderPath(FOLDERID_System, NULL, SysDir, sizeof(SysDir))) {
+		if (GetFolderPath(FOLDERID_System, NULL, SysDir, sizeof(SysDir)))
+		{
 			swprintf_s(DLLPath, MAX_PATH, L"%s\\OmniMIDI\\%s.dll", SysDir, RequestedLib);
 			PrintVarToDebugLog("LoadPluginModule", "DLLPath", &DLLPath, PRINT_WCHAR);
 
 			if (BASS_PluginLoad == 0)
 				PrintLoadedDLLToDebugLog(DLLPath, "BASS_PluginLoad is NULL?????????");
 
-			(*Target) = BASS_PluginLoad((const char*)DLLPath, BASS_UNICODE);
+			(*Target) = BASS_PluginLoad((const char *)DLLPath, BASS_UNICODE);
 			if (BASS_ErrorGetCode() != 0)
 				PrintLoadedDLLToDebugLog(DLLPath, "Failed to load requested plugin. It's either missing, requires some missing dependencies or isn't supported by this version of BASS.");
-			else 
+			else
 				PrintLoadedDLLToDebugLog(RequestedLib, "The plugin is now in memory.");
 		}
-		else DLLLoadError(DLLPath, ERROR_PATH_NOT_FOUND);
+		else
+			DLLLoadError(DLLPath, ERROR_PATH_NOT_FOUND);
 	}
-	else PrintLoadedDLLToDebugLog(RequestedLib, "The plugin is already in memory. The HPLUGIN will be a pointer to that address.");
+	else
+		PrintLoadedDLLToDebugLog(RequestedLib, "The plugin is already in memory. The HPLUGIN will be a pointer to that address.");
 }
 
-BOOL LoadBASSFunctions() {
-	try {
-		if (!BASSLoadedToMemory) {
+BOOL LoadBASSFunctions()
+{
+	try
+	{
+		if (!BASSLoadedToMemory)
+		{
 			PrintMessageToDebugLog("ImportBASS", "Importing BASS DLLs to memory...");
 
 			// Load modules
@@ -528,21 +609,26 @@ BOOL LoadBASSFunctions() {
 
 			PrintMessageToDebugLog("ImportBASS", "Function pointers loaded into memory.");
 		}
-		else PrintMessageToDebugLog("ImportBASS", "BASS has been already loaded by the driver.");
+		else
+			PrintMessageToDebugLog("ImportBASS", "BASS has been already loaded by the driver.");
 
 		PrintMessageToDebugLog("ImportBASS", "Setting BASS flag to true.");
 		BASSLoadedToMemory = TRUE;
 
 		return TRUE;
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
 
-VOID UnloadBASSFunctions() {
-	try {
-		if (BASSLoadedToMemory) {
+VOID UnloadBASSFunctions()
+{
+	try
+	{
+		if (BASSLoadedToMemory)
+		{
 			// Set the functions back to dummies, to avoid issues
 			_PrsData = DummyParseData;
 			_PforBASSMIDI = DummyPrepareForBASSMIDI;
@@ -577,16 +663,19 @@ VOID UnloadBASSFunctions() {
 
 			PrintMessageToDebugLog("UnloadBASS", "The BASS libraries have been freed from the app's working set.");
 		}
-		else PrintMessageToDebugLog("UnloadBASS", "BASS hasn't been loaded by the driver yet.");
+		else
+			PrintMessageToDebugLog("UnloadBASS", "BASS hasn't been loaded by the driver yet.");
 
 		BASSLoadedToMemory = FALSE;
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
 
-void ResetEVBufferSettings() {
+void ResetEVBufferSettings()
+{
 	EvBufferSize = 4096;
 	EvBufferMultRatio = 1;
 
@@ -595,7 +684,8 @@ void ResetEVBufferSettings() {
 	RegSetValueEx(Configuration.Address, L"EvBufferMultRatio", 0, REG_DWORD, (LPBYTE)&EvBufferMultRatio, sizeof(EvBufferMultRatio));
 }
 
-void FreeUpMemory() {
+void FreeUpMemory()
+{
 	// Free up the memory, since it's not needed or it has to be reinitialized
 	PrintMessageToDebugLog("FreeUpMemoryFunc", "Freeing EV buffer...");
 	if (EVBuffer.Buffer)
@@ -615,8 +705,10 @@ void FreeUpMemory() {
 	PrintMessageToDebugLog("FreeUpMemoryFunc", "Freed.");
 }
 
-void AllocateMemory(BOOL restart) {
-	try {
+void AllocateMemory(BOOL restart)
+{
+	try
+	{
 		PrintMessageToDebugLog("AllocateMemoryFunc", "Allocating memory for EV buffer and audio buffer");
 
 		// Check how much RAM is available
@@ -627,14 +719,18 @@ void AllocateMemory(BOOL restart) {
 		GlobalMemoryStatusEx(&status);
 
 		// Check if the user has chosen to get the EVBuffer size from the RAM
-		if (GetEvBuffSizeFromRAM == 1) {
+		if (GetEvBuffSizeFromRAM == 1)
+		{
 			// He did, do a calculation to get the size
 			TempEvBufferSize = status.ullTotalPhys;
-			if (EvBufferMultRatio < 2) EvBufferMultRatio = 128;
+			if (EvBufferMultRatio < 2)
+				EvBufferMultRatio = 128;
 		}
-		else {
+		else
+		{
 			// He didn't, check if the selected EVBuffer size doesn't exceed the maximum amount of RAM available
-			if (TempEvBufferSize >= status.ullTotalPhys) {
+			if (TempEvBufferSize >= status.ullTotalPhys)
+			{
 				MessageBox(NULL, L"The events buffer cannot allocate more than the total RAM available!\nIts size will now default to 16384 bytes.\n\nThe EVBuffer settings have been reset.", L"OmniMIDI - Illegal memory amount defined", MB_OK | MB_ICONEXCLAMATION | MB_SYSTEMMODAL);
 				ResetEVBufferSettings();
 				TempEvBufferSize = EvBufferSize;
@@ -646,7 +742,8 @@ void AllocateMemory(BOOL restart) {
 
 		// Check if the EVBuffer size goes above 512MB of RAM
 		// Each 32-bit app is limited to a 2GB working set size
-		if (TempEvBufferSize > 134217728) {
+		if (TempEvBufferSize > 134217728)
+		{
 			// It is, limit the EVBuffer to 512MB
 			PrintMessageToDebugLog("AllocateMemoryFunc", "EV buffer is too big, limiting to 512MB...");
 			TempEvBufferSize = 134217728;
@@ -656,24 +753,30 @@ void AllocateMemory(BOOL restart) {
 		// Calculate the ratio
 		EvBufferSize = TempEvBufferSize / (unsigned long long)EvBufferMultRatio;
 
-		if (restart) {
-			if (EvBufferSize != EVBuffer.BufSize) {
+		if (restart)
+		{
+			if (EvBufferSize != EVBuffer.BufSize)
+			{
 				// Set them to dummy temporarily to avoid problems
 				UnsetBufferPointers();
 				FreeUpMemory();
 			}
-			else return;
+			else
+				return;
 		}
 
-		if (EvBufferSize < 1) {
+		if (EvBufferSize < 1)
+		{
 			MessageBox(NULL, L"The size of the buffer cannot be 0!\nIts size will now default to 16384 bytes.\n\nThe settings have been reset.", L"OmniMIDI - Illegal memory amount defined", MB_OK | MB_ICONEXCLAMATION | MB_SYSTEMMODAL);
 			ResetEVBufferSettings();
 			TempEvBufferSize = EvBufferSize;
 		}
 
 		// Begin allocating the EVBuffer
-		if (EVBuffer.Buffer != NULL) PrintMessageToDebugLog("AllocateMemoryFunc", "EV buffer already allocated.");
-		else {
+		if (EVBuffer.Buffer != NULL)
+			PrintMessageToDebugLog("AllocateMemoryFunc", "EV buffer already allocated.");
+		else
+		{
 			// Print the values to the log
 			PrintMemoryMessageToDebugLog("AllocateMemoryFunc", "EV buffer size (in amount of DWORDs)", FALSE, TempEvBufferSize);
 			PrintMemoryMessageToDebugLog("AllocateMemoryFunc", "EV buffer division ratio", TRUE, EvBufferMultRatio);
@@ -682,8 +785,9 @@ void AllocateMemory(BOOL restart) {
 
 			PrintMessageToDebugLog("AllocateMemoryFunc", "Allocating EV buffer...");
 			EVBuffer.BufSize = EvBufferSize;
-			EVBuffer.Buffer = (EvBuf_t*)VirtualAlloc(NULL, EVBuffer.BufSize * sizeof(EvBuf_t), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-			if (EVBuffer.Buffer == NULL) {
+			EVBuffer.Buffer = (EvBuf_t *)VirtualAlloc(NULL, EVBuffer.BufSize * sizeof(EvBuf_t), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+			if (EVBuffer.Buffer == NULL)
+			{
 				MessageBox(NULL, L"The driver failed to allocate the events buffer!\n\nNot enough memory, press OK to quit.", L"OmniMIDI - FATAL ERREOR", MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
 				exit(ERROR_NOT_ENOUGH_MEMORY);
 			}
@@ -704,22 +808,23 @@ void AllocateMemory(BOOL restart) {
 		if (restart)
 			SetBufferPointers();
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
 
 void LoadSettings(BOOL Restart, BOOL RT)
-{	
+{
 	// Initialize the temp values
 	DWORD
-		TempNLV = ManagedSettings.NoteLengthValue,
-		TempDNOV = ManagedSettings.DelayNoteOffValue,
-		TempSC = ManagedSettings.SincConv,
-		TempOV = ManagedSettings.OutputVolume,
-		TempHP = HyperMode,
-		TempNCWA = ManagedSettings.NotesCatcherWithAudio,
-		TempMV = ManagedSettings.MaxVoices;
+	TempNLV = ManagedSettings.NoteLengthValue,
+	TempDNOV = ManagedSettings.DelayNoteOffValue,
+	TempSC = ManagedSettings.SincConv,
+	TempOV = ManagedSettings.OutputVolume,
+	TempHP = HyperMode,
+	TempNCWA = ManagedSettings.NotesCatcherWithAudio,
+	TempMV = ManagedSettings.MaxVoices;
 
 	BOOL
 		TempESFX = ManagedSettings.EnableSFX,
@@ -731,53 +836,55 @@ void LoadSettings(BOOL Restart, BOOL RT)
 
 	// OM 15.x+ backport
 	DWORD
-		TempRO = ManagedSettings.ReverbOverride,
-		TempRIG = ManagedSettings.ReverbInGain,
-		TempRM = ManagedSettings.ReverbMix,
-		TempRT = ManagedSettings.ReverbTime,
-		TempHFRTR = ManagedSettings.ReverbHighFreqRTRatio;
+	TempRO = ManagedSettings.ReverbOverride,
+	TempRIG = ManagedSettings.ReverbInGain,
+	TempRM = ManagedSettings.ReverbMix,
+	TempRT = ManagedSettings.ReverbTime,
+	TempHFRTR = ManagedSettings.ReverbHighFreqRTRatio;
 
 	DWORD
-		TempCO = ManagedSettings.ChorusOverride,
-		TempCWDM = ManagedSettings.ChorusWetDryMix,
-		TempCDp = ManagedSettings.ChorusDepth,
-		TempCFb = ManagedSettings.ChorusFeedback,
-		TempCFr = ManagedSettings.ChorusFrequency,
-		TempCDl = ManagedSettings.ChorusDelay,
-		TempCPh = ManagedSettings.ChorusPhase;
+	TempCO = ManagedSettings.ChorusOverride,
+	TempCWDM = ManagedSettings.ChorusWetDryMix,
+	TempCDp = ManagedSettings.ChorusDepth,
+	TempCFb = ManagedSettings.ChorusFeedback,
+	TempCFr = ManagedSettings.ChorusFrequency,
+	TempCDl = ManagedSettings.ChorusDelay,
+	TempCPh = ManagedSettings.ChorusPhase;
 
 	DWORD
-		TempEO = ManagedSettings.EchoOverride,
-		TempEWDM = ManagedSettings.EchoWetDryMix,
-		TempEFb = ManagedSettings.EchoFeedback,
-		TempELD = ManagedSettings.EchoLeftDelay,
-		TempERD = ManagedSettings.EchoRightDelay;
+	TempEO = ManagedSettings.EchoOverride,
+	TempEWDM = ManagedSettings.EchoWetDryMix,
+	TempEFb = ManagedSettings.EchoFeedback,
+	TempELD = ManagedSettings.EchoLeftDelay,
+	TempERD = ManagedSettings.EchoRightDelay;
 
 	BOOL
 		TempCSM = ManagedSettings.ChorusSineMode,
 		TempEPD = ManagedSettings.EchoPanDelay;
 
-
 	DWORD64
-		TEvBufferSize = EvBufferSize,
-		TEvBufferMultRatio = EvBufferMultRatio;
+	TEvBufferSize = EvBufferSize,
+	TEvBufferMultRatio = EvBufferMultRatio;
 
 	DOUBLE
-		TSpeedHack = SpeedHack;
+	TSpeedHack = SpeedHack;
 
 	DWORD
-		RSH = 100000000;
+	RSH = 100000000;
 
-	try {
+	try
+	{
 		// If the driver is booting up, then return true
 		BOOL IsBootUp = (!RT && !Restart);
-		if (!RT) PrintMessageToDebugLog("LoadSettingsFuncs", "Loading settings from registry...");
+		if (!RT)
+			PrintMessageToDebugLog("LoadSettingsFuncs", "Loading settings from registry...");
 
 		// Load the settings from the registry
 		OpenRegistryKey(Configuration, L"Software\\OmniMIDI\\Configuration", TRUE);
 
 		// These settings should NOT be loaded in real-time
-		if (!RT) {
+		if (!RT)
+		{
 			// Load the selected driver priority value from the registry
 			OpenRegistryKey(MainKey, L"Software\\OmniMIDI", TRUE);
 			RegQueryValueEx(MainKey.Address, L"DriverPriority", NULL, &dwType, (LPBYTE)&ManagedSettings.DriverPriority, &dwSize);
@@ -809,9 +916,11 @@ void LoadSettings(BOOL Restart, BOOL RT)
 			RegQueryValueEx(Configuration.Address, L"NoSFGenLimits", NULL, &dwType, (LPBYTE)&ManagedSettings.NoSFGenLimits, &dwSize);
 			RegQueryValueEx(Configuration.Address, L"BASSDSMode", NULL, &dwType, (LPBYTE)&ManagedSettings.BASSDSMode, &dwSize);
 
-			if (ManagedSettings.CurrentEngine != AUDTOWAV) RegQueryValueEx(Configuration.Address, L"NotesCatcherWithAudio", NULL, &dwType, (LPBYTE)&TempNCWA, &dwSize);
-			else ManagedSettings.NotesCatcherWithAudio = TRUE;
-		
+			if (ManagedSettings.CurrentEngine != AUDTOWAV)
+				RegQueryValueEx(Configuration.Address, L"NotesCatcherWithAudio", NULL, &dwType, (LPBYTE)&TempNCWA, &dwSize);
+			else
+				ManagedSettings.NotesCatcherWithAudio = TRUE;
+
 			SamplesPerFrame = ManagedSettings.XASamplesPerFrame * (ManagedSettings.MonoRendering ? 1 : 2);
 		}
 
@@ -866,13 +975,18 @@ void LoadSettings(BOOL Restart, BOOL RT)
 		RegQueryValueEx(Configuration.Address, L"EchoWetDryMix", NULL, &dwType, (LPBYTE)&TempEWDM, &dwSize);
 		RegQueryValueEx(Configuration.Address, L"EchoFeedback", NULL, &dwType, (LPBYTE)&TempEFb, &dwSize);
 		RegQueryValueEx(Configuration.Address, L"EchoLeftDelay", NULL, &dwType, (LPBYTE)&TempELD, &dwSize);
-		RegQueryValueEx(Configuration.Address, L"EchoRightDelay", NULL, &dwType, (LPBYTE)&TempERD/*EM*/, &dwSize);
+		RegQueryValueEx(Configuration.Address, L"EchoRightDelay", NULL, &dwType, (LPBYTE)&TempERD /*EM*/, &dwSize);
 		RegQueryValueEx(Configuration.Address, L"EchoPanDelay", NULL, &dwType, (LPBYTE)&TempEPD, &dwSize);
 
-		
 		// Stuff that works so don't bother
-		if (!Between(ManagedSettings.MinVelIgnore, 1, 127)) { ManagedSettings.MinVelIgnore = 1; }
-		if (!Between(ManagedSettings.MaxVelIgnore, 1, 127)) { ManagedSettings.MaxVelIgnore = 1; }
+		if (!Between(ManagedSettings.MinVelIgnore, 1, 127))
+		{
+			ManagedSettings.MinVelIgnore = 1;
+		}
+		if (!Between(ManagedSettings.MaxVelIgnore, 1, 127))
+		{
+			ManagedSettings.MaxVelIgnore = 1;
+		}
 
 		TSpeedHack = (double)RSH / 100000000.0;
 
@@ -882,16 +996,20 @@ void LoadSettings(BOOL Restart, BOOL RT)
 		if (TempDNFO != ManagedSettings.DelayNoteOffValue)
 			FDelayNoteOff = BASS_ChannelSeconds2Bytes(OMStream, ((double)ManagedSettings.DelayNoteOffValue / 1000.0));
 
-		if (TSpeedHack != SpeedHack) {
-			if (NT_SUCCESS(NtQuerySystemTime(&TickStart))) {
+		if (TSpeedHack != SpeedHack)
+		{
+			if (NT_SUCCESS(NtQuerySystemTime(&TickStart)))
+			{
 				PrintMessageToDebugLog("LoadSettingsFuncs", "SpeedHack updated.");
 			}
 			SpeedHack = TSpeedHack;
 		}
 
 		// Volume
-		if (TempOV != ManagedSettings.OutputVolume || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) {
+		if (TempOV != ManagedSettings.OutputVolume || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+			{
 				ManagedSettings.OutputVolume = TempOV;
 				SynthVolume = ManagedSettings.OutputVolume != 0 ? ((float)ManagedSettings.OutputVolume / 10000.0f) : 0.0f;
 			}
@@ -901,14 +1019,15 @@ void LoadSettings(BOOL Restart, BOOL RT)
 		}
 
 		// Effects backported from OM15.x+
-		if (TempRO != ManagedSettings.ReverbOverride || 
+		if (TempRO != ManagedSettings.ReverbOverride ||
 			TempRIG != ManagedSettings.ReverbInGain ||
 			TempRM != ManagedSettings.ReverbMix ||
 			TempRT != ManagedSettings.ReverbTime ||
 			TempHFRTR != ManagedSettings.ReverbHighFreqRTRatio ||
 			SettingsManagedByClient)
 		{
-			if (!SettingsManagedByClient) {
+			if (!SettingsManagedByClient)
+			{
 				ManagedSettings.ReverbOverride = TempRO;
 				ManagedSettings.ReverbInGain = TempRIG;
 				ManagedSettings.ReverbMix = TempRM;
@@ -930,7 +1049,8 @@ void LoadSettings(BOOL Restart, BOOL RT)
 			TempCSM != ManagedSettings.ChorusSineMode ||
 			SettingsManagedByClient)
 		{
-			if (!SettingsManagedByClient) {
+			if (!SettingsManagedByClient)
+			{
 				ManagedSettings.ChorusOverride = TempCO;
 				ManagedSettings.ChorusWetDryMix = TempCWDM;
 				ManagedSettings.ChorusDepth = TempCDp;
@@ -953,7 +1073,8 @@ void LoadSettings(BOOL Restart, BOOL RT)
 			TempEPD != ManagedSettings.EchoPanDelay ||
 			SettingsManagedByClient)
 		{
-			if (!SettingsManagedByClient) {
+			if (!SettingsManagedByClient)
+			{
 				ManagedSettings.EchoOverride = TempEO;
 				ManagedSettings.EchoWetDryMix = TempEWDM;
 				ManagedSettings.EchoFeedback = TempEFb;
@@ -967,92 +1088,126 @@ void LoadSettings(BOOL Restart, BOOL RT)
 		}
 
 		// Check if the value is different from the temporary one
-		if (TempDMN != ManagedSettings.DontMissNotes || SettingsManagedByClient) {
+		if (TempDMN != ManagedSettings.DontMissNotes || SettingsManagedByClient)
+		{
 			// It is different, reset the synth
 			// to avoid stuck notes or crashes
-			if (!SettingsManagedByClient) ManagedSettings.DontMissNotes = TempDMN;
-			if (RT) ResetSynth(TRUE, FALSE);
+			if (!SettingsManagedByClient)
+				ManagedSettings.DontMissNotes = TempDMN;
+			if (RT)
+				ResetSynth(TRUE, FALSE);
 		}
 
 		// Check if the value is different from the temporary one
-		if (TempHP != HyperMode || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) HyperMode = TempHP;
+		if (TempHP != HyperMode || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+				HyperMode = TempHP;
 
 			// Close the threads for safety reasons
-			if (RT) stop_thread = TRUE;
+			if (RT)
+				stop_thread = TRUE;
 
 			// Check if "Hyper-playback" mode has been enabled
 			SetBufferPointers();
 
 			// Restart threads
-			if (RT) stop_thread = FALSE;
+			if (RT)
+				stop_thread = FALSE;
 		}
 
-		if (TempNCWA != ManagedSettings.NotesCatcherWithAudio || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) ManagedSettings.NotesCatcherWithAudio = TempNCWA;
+		if (TempNCWA != ManagedSettings.NotesCatcherWithAudio || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+				ManagedSettings.NotesCatcherWithAudio = TempNCWA;
 		}
 
-		if (IsBootUp || (TEvBufferSize != EvBufferSize || TEvBufferMultRatio != EvBufferMultRatio)) {
+		if (IsBootUp || (TEvBufferSize != EvBufferSize || TEvBufferMultRatio != EvBufferMultRatio))
+		{
 			EvBufferSize = TEvBufferSize;
 			EvBufferMultRatio = TEvBufferMultRatio;
 		}
 
 		// Load the settings by comparing the temporary values to the driver's ones, to prevent overhead
-		if (TempESFX != ManagedSettings.EnableSFX || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) ManagedSettings.EnableSFX = TempESFX;
-			if (RT) BASS_ChannelFlags(OMStream, ManagedSettings.EnableSFX ? 0 : BASS_MIDI_NOFX, BASS_MIDI_NOFX);
+		if (TempESFX != ManagedSettings.EnableSFX || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+				ManagedSettings.EnableSFX = TempESFX;
+			if (RT)
+				BASS_ChannelFlags(OMStream, ManagedSettings.EnableSFX ? 0 : BASS_MIDI_NOFX, BASS_MIDI_NOFX);
 		}
 
-		if (TempNOFF1 != ManagedSettings.NoteOff1 || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) ManagedSettings.NoteOff1 = TempNOFF1;
-			if (RT) BASS_ChannelFlags(OMStream, ManagedSettings.NoteOff1 ? BASS_MIDI_NOTEOFF1 : 0, BASS_MIDI_NOTEOFF1);
+		if (TempNOFF1 != ManagedSettings.NoteOff1 || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+				ManagedSettings.NoteOff1 = TempNOFF1;
+			if (RT)
+				BASS_ChannelFlags(OMStream, ManagedSettings.NoteOff1 ? BASS_MIDI_NOTEOFF1 : 0, BASS_MIDI_NOTEOFF1);
 		}
 
-		if (TempISR != ManagedSettings.IgnoreSysReset || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) ManagedSettings.IgnoreSysReset = TempNOFF1;
-			if (RT) BASS_ChannelFlags(OMStream, ManagedSettings.IgnoreSysReset ? BASS_MIDI_NOSYSRESET : 0, BASS_MIDI_NOSYSRESET);
+		if (TempISR != ManagedSettings.IgnoreSysReset || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+				ManagedSettings.IgnoreSysReset = TempNOFF1;
+			if (RT)
+				BASS_ChannelFlags(OMStream, ManagedSettings.IgnoreSysReset ? BASS_MIDI_NOSYSRESET : 0, BASS_MIDI_NOSYSRESET);
 		}
 
-		if (TempSI != ManagedSettings.SincInter || TempSC != ManagedSettings.SincConv || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) {
+		if (TempSI != ManagedSettings.SincInter || TempSC != ManagedSettings.SincConv || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+			{
 				ManagedSettings.SincInter = TempSI;
 				ManagedSettings.SincConv = TempSC;
 			}
 
-			if (RT) {
+			if (RT)
+			{
 				BASS_ChannelFlags(OMStream, ManagedSettings.SincInter ? BASS_MIDI_SINCINTER : 0, BASS_MIDI_SINCINTER);
 				BASS_ChannelSetAttribute(OMStream, BASS_ATTRIB_SRC, ManagedSettings.SincConv);
 			}
 		}
 
-		if (TempDNFO != ManagedSettings.DisableNotesFadeOut || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) ManagedSettings.DisableNotesFadeOut = TempDNFO;
-			if (RT) BASS_ChannelSetAttribute(OMStream, BASS_ATTRIB_MIDI_KILL, ManagedSettings.DisableNotesFadeOut);
+		if (TempDNFO != ManagedSettings.DisableNotesFadeOut || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+				ManagedSettings.DisableNotesFadeOut = TempDNFO;
+			if (RT)
+				BASS_ChannelSetAttribute(OMStream, BASS_ATTRIB_MIDI_KILL, ManagedSettings.DisableNotesFadeOut);
 		}
 
-		if (TempMV != ManagedSettings.MaxVoices || SettingsManagedByClient) {
-			if (!SettingsManagedByClient) ManagedSettings.MaxVoices = TempMV;
-			if (RT) BASS_ChannelSetAttribute(OMStream, BASS_ATTRIB_MIDI_VOICES, ManagedSettings.MaxVoices);
+		if (TempMV != ManagedSettings.MaxVoices || SettingsManagedByClient)
+		{
+			if (!SettingsManagedByClient)
+				ManagedSettings.MaxVoices = TempMV;
+			if (RT)
+				BASS_ChannelSetAttribute(OMStream, BASS_ATTRIB_MIDI_VOICES, ManagedSettings.MaxVoices);
 		}
 
-		if (RT) BASS_ChannelSetAttribute(OMStream, BASS_ATTRIB_MIDI_CHANS, UnlimitedChannels ? 128.0f : 16.0f);
+		if (RT)
+			BASS_ChannelSetAttribute(OMStream, BASS_ATTRIB_MIDI_CHANS, UnlimitedChannels ? 128.0f : 16.0f);
 
-		if (!RT) PrintMessageToDebugLog("LoadSettingsFuncs", "Settings loaded.");
+		if (!RT)
+			PrintMessageToDebugLog("LoadSettingsFuncs", "Settings loaded.");
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
 
-void LoadCustomInstruments() {
-	wchar_t TempPc[MAXPNAMELEN] = { 0 };
-	wchar_t TempBc[MAXPNAMELEN] = { 0 };
+void LoadCustomInstruments()
+{
+	wchar_t TempPc[MAXPNAMELEN] = {0};
+	wchar_t TempBc[MAXPNAMELEN] = {0};
 
-	try {
+	try
+	{
 		OpenRegistryKey(ChanOverride, L"Software\\OmniMIDI\\ChanOverride", TRUE);
 
 		RegQueryValueEx(ChanOverride.Address, L"overrideinstruments", NULL, &dwType, (LPBYTE)&ManagedSettings.OverrideInstruments, &dwSize);
-		for (int i = 0; i <= 15; ++i) {
+		for (int i = 0; i <= 15; ++i)
+		{
 			swprintf_s(TempPc, MAXPNAMELEN, L"pc%d", i + 1);
 			swprintf_s(TempBc, MAXPNAMELEN, L"bc%d", i + 1);
 
@@ -1061,13 +1216,16 @@ void LoadCustomInstruments() {
 			RegQueryValueEx(ChanOverride.Address, TempBc, NULL, &dwType, (LPBYTE)&cbank[i], &dwSize);
 		}
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
 
-int AudioRenderingType(BOOLEAN IsItStreamCreation, INT RegistryVal) {
-	switch (ManagedSettings.CurrentEngine) {
+int AudioRenderingType(BOOLEAN IsItStreamCreation, INT RegistryVal)
+{
+	switch (ManagedSettings.CurrentEngine)
+	{
 	case ASIO_ENGINE:
 	case WASAPI_ENGINE:
 		return IsItStreamCreation ? BASS_SAMPLE_FLOAT : BASS_DATA_FLOAT;
@@ -1081,53 +1239,90 @@ int AudioRenderingType(BOOLEAN IsItStreamCreation, INT RegistryVal) {
 	}
 }
 
-void SFDynamicLoaderCheck() {
-	wchar_t TempRe[MAXPNAMELEN] = { 0 };
+void SFDynamicLoaderCheck()
+{
+	wchar_t TempRe[MAXPNAMELEN] = {0};
 
-	try {
+	try
+	{
 		// Used to check which SoundFont list has been loaded through the configurator
 		OpenRegistryKey(SFDynamicLoader, L"Software\\OmniMIDI\\Watchdog", TRUE);
 
+		// Check for Permafrost reload flag first
+		DWORD permafrostReload = 0;
+		RegQueryValueEx(SFDynamicLoader.Address, L"permafrost_reload", NULL, &dwType, (LPBYTE)&permafrostReload, &dwSize);
+		if (permafrostReload)
+		{
+			RegSetValueEx(SFDynamicLoader.Address, L"permafrost_reload", 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
+			PrintMessageToDebugLog("SFDynamicLoader", "Permafrost reload triggered, re-querying service...");
+			
+			// Re-query Permafrost for updated soundfont list
+			std::wstring permafrostListData;
+			if (RequestSoundFontListFromPermafrost(AppNameW, AppPathW, GetCurrentProcessId(), permafrostListData))
+			{
+				UnsetBufferPointers();
+				if (FontLoaderFromString(permafrostListData))
+				{
+					PrintMessageToDebugLog("SFDynamicLoader", "Successfully reloaded SoundFonts from Permafrost.");
+					ManagedDebugInfo.CurrentSFList = 99;
+				}
+				SetBufferPointers();
+			}
+			else
+			{
+				PrintMessageToDebugLog("SFDynamicLoader", "Permafrost not available for reload.");
+			}
+		}
+
 		// Check each value, to see if they're true or not
-		for (int i = 0; i <= 15; ++i) {
+		for (int i = 0; i <= 15; ++i)
+		{
 			swprintf_s(TempRe, MAXPNAMELEN, L"rel%d", i + 1);
 			RegQueryValueEx(SFDynamicLoader.Address, TempRe, NULL, &dwType, (LPBYTE)&rvalues[i], &dwSize);
 
 			// Value "i" is true, reload the specific SoundFont list
-			if (rvalues[i]) {
+			if (rvalues[i])
+			{
 				RegSetValueEx(SFDynamicLoader.Address, TempRe, 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
 				LoadSoundfont(i);
 			}
 		}
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
 
-void CheckVolume(BOOL Closing) {
-	try {
+void CheckVolume(BOOL Closing)
+{
+	try
+	{
 		// Self explanatory
 		OpenRegistryKey(MainKey, L"Software\\OmniMIDI", TRUE);
 
-		if (!Closing && !stop_thread && BASSLoadedToMemory && bass_initialized) {
-			if (ManagedSettings.VolumeMonitor == TRUE && ManagedSettings.CurrentEngine > AUDTOWAV) {
-				float levels[2] = { -0.1f, -0.1f };
+		if (!Closing && !stop_thread && BASSLoadedToMemory && bass_initialized)
+		{
+			if (ManagedSettings.VolumeMonitor == TRUE && ManagedSettings.CurrentEngine > AUDTOWAV)
+			{
+				float levels[2] = {-0.1f, -0.1f};
 				DWORD left = 0, right = 0;
 
-				switch (ManagedSettings.CurrentEngine) {
+				switch (ManagedSettings.CurrentEngine)
+				{
 				case WASAPI_ENGINE:
 					if (ManagedSettings.WASAPIDoubleBuf)
 						BASS_WASAPI_GetLevelEx(levels, (ManagedSettings.MonoRendering ? 0.01f : 0.02f), (ManagedSettings.MonoRendering ? BASS_LEVEL_MONO : BASS_LEVEL_STEREO));
-					else {
-						left = 0;	// the left level
-						right = 0;	// the right level
+					else
+					{
+						left = 0;  // the left level
+						right = 0; // the right level
 					}
 
 					break;
-					
+
 				case BASS_OUTPUT:
-				// case DXAUDIO_ENGINE:
+					// case DXAUDIO_ENGINE:
 					BASS_ChannelGetLevelEx(OMStream, levels, (ManagedSettings.MonoRendering ? 0.01f : 0.02f), (ManagedSettings.MonoRendering ? BASS_LEVEL_MONO : BASS_LEVEL_STEREO));
 					break;
 				case ASIO_ENGINE:
@@ -1138,22 +1333,25 @@ void CheckVolume(BOOL Closing) {
 					break;
 				}
 
-				if (levels[0] > -0.1f && levels[1] > -0.1f) {
+				if (levels[0] > -0.1f && levels[1] > -0.1f)
+				{
 					DWORD level = MAKELONG((WORD)(min(levels[0], 1) * 32768), (WORD)(min(levels[1], 1) * 32768));
-					left = LOWORD(level);	// the left level
-					right = HIWORD(level);	// the right level
+					left = LOWORD(level);  // the left level
+					right = HIWORD(level); // the right level
 				}
 
 				RegSetValueEx(MainKey.Address, L"leftvol", 0, REG_DWORD, (LPBYTE)&left, sizeof(left));
 				RegSetValueEx(MainKey.Address, L"rightvol", 0, REG_DWORD, (LPBYTE)&right, sizeof(right));
 			}
 		}
-		else {
+		else
+		{
 			RegSetValueEx(MainKey.Address, L"leftvol", 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
 			RegSetValueEx(MainKey.Address, L"rightvol", 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
 		}
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
@@ -1173,18 +1371,19 @@ std::string draw_number(const T a_value, int prec, DWORD compar, LPCSTR c1, LPCS
 	return out.str();
 }
 
-void FillContentDebug() {
+void FillContentDebug()
+{
 	GetAppName();
 
-	std::locale::global(std::locale::classic());	// DO NOT REMOVE
+	std::locale::global(std::locale::classic()); // DO NOT REMOVE
 
 	// For debug window
 	std::wstring PipeContent;
-	DWORD bytesWritten;								// Needed for Windows 7 apparently...
+	DWORD bytesWritten; // Needed for Windows 7 apparently...
 	DWORD handleCount;
 
 	PROCESS_MEMORY_COUNTERS_EX pmc;
-	GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc));
+	GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS *)&pmc, sizeof(pmc));
 	GetProcessHandleCount(GetCurrentProcess(), &handleCount);
 	SIZE_T RU = pmc.WorkingSetSize;
 	QWORD ramusageint = static_cast<QWORD>(RU);
@@ -1200,7 +1399,7 @@ void FillContentDebug() {
 	PipeContent.append(L"|BitApp = AArch64");
 #endif
 
-	for (int i = 0; i <= 15; ++i) 
+	for (int i = 0; i <= 15; ++i)
 		PipeContent.append(L"|CV" + std::to_wstring(i) + L" = " + std::to_wstring(ManagedDebugInfo.ActiveVoices[i]));
 
 	PipeContent.append(L"|CurCPU = " + std::to_wstring(ManagedDebugInfo.RenderingTime));
@@ -1217,20 +1416,25 @@ void FillContentDebug() {
 
 	PipeContent.append(L"\n\0");
 
-	const WCHAR* PCW = PipeContent.c_str();
+	const WCHAR *PCW = PipeContent.c_str();
 	WriteFile(hPipe, (LPVOID)PCW, wcslen(PCW) * sizeof(wchar_t), &bytesWritten, NULL);
-	if (hPipe == INVALID_HANDLE_VALUE || (GetLastError() != ERROR_SUCCESS && GetLastError() != ERROR_PIPE_LISTENING)) StartDebugPipe(TRUE);
+	if (hPipe == INVALID_HANDLE_VALUE || (GetLastError() != ERROR_SUCCESS && GetLastError() != ERROR_PIPE_LISTENING))
+		StartDebugPipe(TRUE);
 }
 
-void ParseDebugData() {
+void ParseDebugData()
+{
 	DWORD ASIOTempOutLatency;
 
-	if (BASSLoadedToMemory && bass_initialized) {
+	if (BASSLoadedToMemory && bass_initialized)
+	{
 		BASS_ChannelGetAttribute(OMStream, BASS_ATTRIB_CPU, &ManagedDebugInfo.RenderingTime);
 
-		for (int i = 0; i <= 15; ++i) {
+		for (int i = 0; i <= 15; ++i)
+		{
 			int temp = BASS_MIDI_StreamGetEvent(OMStream, i, MIDI_EVENT_VOICES);
-			if (temp != -1) ManagedDebugInfo.ActiveVoices[i] = temp;
+			if (temp != -1)
+				ManagedDebugInfo.ActiveVoices[i] = temp;
 		}
 
 		/*
@@ -1240,31 +1444,38 @@ void ParseDebugData() {
 		ManagedDebugInfo.CookedThreadTime = GetThreadUsage(&CookedThread);
 		*/
 	}
-	else {
+	else
+	{
 		ManagedDebugInfo.RenderingTime = 0.0f;
 		ManagedDebugInfo.AudioLatency = 0.0;
-		for (int i = 0; i <= 15; ++i) ManagedDebugInfo.ActiveVoices[i] = 0;
+		for (int i = 0; i <= 15; ++i)
+			ManagedDebugInfo.ActiveVoices[i] = 0;
 	}
 }
 
-void SendDebugDataToPipe() {
-	try {
+void SendDebugDataToPipe()
+{
+	try
+	{
 		FillContentDebug();
 
 		FlushFileBuffers(hPipe);
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
 
-void MixerCheck() {
-	wchar_t TempCh[MAXPNAMELEN] = { 0 };
-	wchar_t TempPs[MAXPNAMELEN] = { 0 };
+void MixerCheck()
+{
+	wchar_t TempCh[MAXPNAMELEN] = {0};
+	wchar_t TempPs[MAXPNAMELEN] = {0};
 
-	try {
+	try
+	{
 		OpenRegistryKey(Channels, L"Software\\OmniMIDI\\Channels", TRUE);
-		for (int i = 0; i <= 15; ++i) 
+		for (int i = 0; i <= 15; ++i)
 		{
 			swprintf_s(TempCh, MAXPNAMELEN, L"ch%d", i + 1);
 			swprintf_s(TempPs, MAXPNAMELEN, L"ch%dpshift\0", i + 1);
@@ -1275,17 +1486,21 @@ void MixerCheck() {
 			_BMSE(OMStream, i, MIDI_EVENT_MIXLEVEL, cvalues[i]);
 		}
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
 
-void ReloadSFList(DWORD whichsflist){
-	try {	
+void ReloadSFList(DWORD whichsflist)
+{
+	try
+	{
 		if (LoadSoundfont(whichsflist))
 			ResetSynth(FALSE, FALSE);
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }
@@ -1296,9 +1511,9 @@ void KeyShortcuts()
 	bool Keys[256];
 	wchar_t OMConfiguratorDir[MAX_PATH];
 
-	try 
+	try
 	{
-		if (ManagedSettings.FastHotkeys == 1) 
+		if (ManagedSettings.FastHotkeys == 1)
 		{
 			// Check if CONTROL is pressed together with ALT
 			ControlPressed = (GetAsyncKeyState(VK_CONTROL) & (1 << 15));
@@ -1318,21 +1533,21 @@ void KeyShortcuts()
 				}
 
 				// ALT + 2
-				if (Keys[0x32]) 
+				if (Keys[0x32])
 				{
 					ReloadSFList(1);
 					return;
 				}
 
 				// ALT + 3
-				if (Keys[0x33]) 
+				if (Keys[0x33])
 				{
 					ReloadSFList(2);
 					return;
 				}
 
 				// ALT + 4
-				if (Keys[0x34]) 
+				if (Keys[0x34])
 				{
 					ReloadSFList(3);
 					return;
@@ -1369,10 +1584,13 @@ void KeyShortcuts()
 				// ALT + 9
 				if (Keys[0x39])
 				{
-					if (ManagedSettings.CurrentEngine == ASIO_ENGINE) {
-						if (BASSLoadedToMemory && bass_initialized) BASS_ASIO_ControlPanel();
+					if (ManagedSettings.CurrentEngine == ASIO_ENGINE)
+					{
+						if (BASSLoadedToMemory && bass_initialized)
+							BASS_ASIO_ControlPanel();
 					}
-					else {
+					else
+					{
 						if (GetFolderPath(FOLDERID_SystemX86, CSIDL_SYSTEMX86, OMConfiguratorDir, sizeof(OMConfiguratorDir)))
 						{
 							PathAppend(OMConfiguratorDir, _T("\\OmniMIDI\\OmniMIDIMixerWindow.exe"));
@@ -1404,7 +1622,8 @@ void KeyShortcuts()
 			}
 		}
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 }

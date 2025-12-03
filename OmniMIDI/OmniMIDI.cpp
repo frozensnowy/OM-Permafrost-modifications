@@ -14,17 +14,17 @@ typedef long NTSTATUS;
 #define __STDC_LIMIT_MACROS
 #define _CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES 1
 
-#define BASSASIODEF(f) (WINAPI *f)
-#define BASSDEF(f) (WINAPI *f)
-#define BASSENCDEF(f) (WINAPI *f)
-#define BASSMIDIDEF(f) (WINAPI *f)
-#define BASSWASAPIDEF(f) (WINAPI *f)
-#define BASS_VSTDEF(f) (WINAPI *f)
+#define BASSASIODEF(f) (WINAPI * f)
+#define BASSDEF(f) (WINAPI * f)
+#define BASSENCDEF(f) (WINAPI * f)
+#define BASSMIDIDEF(f) (WINAPI * f)
+#define BASSWASAPIDEF(f) (WINAPI * f)
+#define BASS_VSTDEF(f) (WINAPI * f)
 #define Between(value, a, b) ((value) >= a && (value) <= b)
 
-#define ERRORCODE		0
-#define CAUSE			1
-#define LONGMSG_MAXSIZE	65535
+#define ERRORCODE 0
+#define CAUSE 1
+#define LONGMSG_MAXSIZE 65535
 
 #define STATUS_SUCCESS 0
 #define STATUS_TIMER_RESOLUTION_NOT_SET 0xC0000245
@@ -79,6 +79,7 @@ typedef long NTSTATUS;
 
 // OmniMIDI vital parts
 #include "SoundFontLoader.h"
+#include "PermafrostIPC.h"
 #include "BufferSystem.h"
 #include "Settings.h"
 #include "BlacklistSystem.h"
@@ -87,22 +88,26 @@ typedef long NTSTATUS;
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD CallReason, LPVOID lpReserved)
 {
-	switch (CallReason) {
+	switch (CallReason)
+	{
 	case DLL_PROCESS_ATTACH:
 	{
-		if (BannedProcesses()) {
+		if (BannedProcesses())
+		{
 			OutputDebugStringA("Process is banned. OmniMIDI will not load.");
 			return FALSE;
 		}
 
 		hinst = hModule;
 
-		if (!NT_SUCCESS(NtQuerySystemTime(&TickStart))) {
+		if (!NT_SUCCESS(NtQuerySystemTime(&TickStart)))
+		{
 			OutputDebugStringA("Failed to parse starting tick through NtQuerySystemTime! OmniMIDI will not load.");
 			return FALSE;
 		}
 
-		if (!InitializeWinMM()) {
+		if (!InitializeWinMM())
+		{
 			OutputDebugStringA("Failed to initialize WinMM.");
 			return FALSE;
 		}
@@ -124,7 +129,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD CallReason, LPVOID lpReserved)
 
 LONG WINAPI DriverProc(DWORD dwDriverIdentifier, HANDLE hdrvr, UINT uMsg, LONG lParam1, LONG lParam2)
 {
-	switch (uMsg) {
+	switch (uMsg)
+	{
 	case DRV_LOAD:
 	case DRV_FREE:
 		return DRVCNF_OK;
@@ -159,18 +165,22 @@ LONG WINAPI DriverProc(DWORD dwDriverIdentifier, HANDLE hdrvr, UINT uMsg, LONG l
 		return DRVCNF_OK;
 	}
 
-	if (!winmm) {
+	if (!winmm)
+	{
 		winmm = GetModuleHandle(L"winmm");
-		if (!winmm) {
+		if (!winmm)
+		{
 			winmm = LoadLibrary(L"winmm");
-			if (!winmm) {
+			if (!winmm)
+			{
 				MessageBoxA(NULL, "Failed to load Windows Multimedia API!\nPress OK to stop the loading process of OmniMIDI.", "OmniMIDI - ERROR", MB_ICONERROR | MB_SYSTEMMODAL);
 				return FALSE;
 			}
 		}
 
 		DefDriverProcImp = (DDP)GetProcAddress(winmm, "DefDriverProc");
-		if (!DefDriverProcImp) {
+		if (!DefDriverProcImp)
+		{
 			MessageBoxA(NULL, "Failed to parse DefDriverProc function from Windows Multimedia API!\nPress OK to stop the loading process of OmniMIDI.", "OmniMIDI - ERROR", MB_ICONERROR | MB_SYSTEMMODAL);
 			return FALSE;
 		}
@@ -179,14 +189,17 @@ LONG WINAPI DriverProc(DWORD dwDriverIdentifier, HANDLE hdrvr, UINT uMsg, LONG l
 	return DefDriverProcImp(dwDriverIdentifier, (HDRVR)hdrvr, uMsg, lParam1, lParam2);
 }
 
-DWORD GiveOmniMIDICaps(PVOID capsPtr, DWORD capsSize) {
+DWORD GiveOmniMIDICaps(PVOID capsPtr, DWORD capsSize)
+{
 	// Initialize values
 	static BOOL LoadedOnce = FALSE;
 
-	try {
+	try
+	{
 		PrintMessageToDebugLog("MODM_GETDEVCAPS", "The MIDI app sent a MODM_GETDEVCAPS request to the driver.");
 
-		if (!LoadedOnce) {
+		if (!LoadedOnce)
+		{
 			OpenRegistryKey(Configuration, L"Software\\OmniMIDI\\Configuration", FALSE);
 			RegQueryValueEx(Configuration.Address, L"DebugMode", NULL, &dwType, (LPBYTE)&ManagedSettings.DebugMode, &dwSize);
 
@@ -200,14 +213,15 @@ DWORD GiveOmniMIDICaps(PVOID capsPtr, DWORD capsSize) {
 		PrintMessageToDebugLog("MODM_GETDEVCAPS", "Sharing MIDI device caps with application...");
 
 		// Prepare the caps item
-		switch (capsSize) {
+		switch (capsSize)
+		{
 		case (sizeof(MIDIOUTCAPSA)):
 		{
 			if (capsPtr == NULL || capsSize != sizeof(MIDIOUTCAPSA))
 				return MMSYSERR_INVALPARAM;
 
 			MIDIOUTCAPSA MIDICaps;
-			
+
 			strcpy_s(MIDICaps.szPname, sizeof(MIDICaps.szPname), "OmniMIDI\0");
 			MIDICaps.dwSupport = MIDICAPS_CACHE;
 			MIDICaps.wChannelMask = 0xFFFF;
@@ -304,7 +318,8 @@ DWORD GiveOmniMIDICaps(PVOID capsPtr, DWORD capsSize) {
 
 		return MMSYSERR_NOERROR;
 	}
-	catch (...) {
+	catch (...)
+	{
 		return MMSYSERR_NOTENABLED;
 	}
 }
@@ -342,16 +357,17 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 	free(Msg);
 	*/
 
-	switch (uMsg) {
+	switch (uMsg)
+	{
 	case MODM_DATA:
 		// Parse the data lol
 		_PrsData(dwParam1);
 		return MMSYSERR_NOERROR;
 	case MODM_LONGDATA:
-		_FeedbackLongMsg((MIDIHDR*)dwParam1, dwParam2);
+		_FeedbackLongMsg((MIDIHDR *)dwParam1, dwParam2);
 
 		// Pass it to a KDMAPI function
-		RetVal = SendDirectLongData((MIDIHDR*)dwParam1, dwParam2);
+		RetVal = SendDirectLongData((MIDIHDR *)dwParam1, dwParam2);
 
 		// Tell the app that the buffer has been played
 		DoCallback(MOM_DONE, dwParam1, 0);
@@ -360,7 +376,7 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		return RetVal;
 	case MODM_STRMDATA:
 	{
-		MIDIHDR* MIDIHeader = (MIDIHDR*)dwParam1;
+		MIDIHDR *MIDIHeader = (MIDIHDR *)dwParam1;
 		DWORD HeaderLength = (DWORD)dwParam2;
 
 		if (!bass_initialized || OMCookedPlayer == nullptr)
@@ -373,7 +389,7 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		{
 			return DebugResult("MODM_STRMDATA", MMSYSERR_INVALPARAM, "The buffer doesn't exist, hasn't been allocated or is not valid.");
 		}
-		
+
 		if (!(MIDIHeader->dwFlags & MHDR_PREPARED))
 			return DebugResult("MODM_STRMDATA", MIDIERR_UNPREPARED, "The buffer is not prepared.");
 
@@ -397,10 +413,11 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		if (OMCookedPlayer->MIDIHeaderQueue)
 		{
 			PrintMessageToDebugLog("MODM_STRMDATA", "Another buffer is already present. Adding it to queue...");
-			MIDIHDR* PMIDIHeader = OMCookedPlayer->MIDIHeaderQueue;
+			MIDIHDR *PMIDIHeader = OMCookedPlayer->MIDIHeaderQueue;
 			PrintMessageToDebugLog("MODM_STRMDATA", "nig");
 
-			if (PMIDIHeader == MIDIHeader) {
+			if (PMIDIHeader == MIDIHeader)
+			{
 				PrintMessageToDebugLog("MODM_STRMDATA", "Unlocking...");
 				UnlockForWriting(&OMCookedPlayer->Lock);
 				return MIDIERR_STILLPLAYING;
@@ -419,7 +436,8 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 
 			PMIDIHeader->lpNext = MIDIHeader;
 		}
-		else OMCookedPlayer->MIDIHeaderQueue = MIDIHeader;
+		else
+			OMCookedPlayer->MIDIHeaderQueue = MIDIHeader;
 		PrintMessageToDebugLog("MODM_STRMDATA", "Copied.");
 
 		PrintMessageToDebugLog("MODM_STRMDATA", "Unlocking...");
@@ -430,8 +448,8 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 	}
 	case MODM_PROPERTIES:
 	{
-		MIDIPROPTIMEDIV* MPropTimeDiv = (MIDIPROPTIMEDIV*)dwParam1;
-		MIDIPROPTEMPO* MPropTempo = (MIDIPROPTEMPO*)dwParam1;
+		MIDIPROPTIMEDIV *MPropTimeDiv = (MIDIPROPTIMEDIV *)dwParam1;
+		MIDIPROPTEMPO *MPropTempo = (MIDIPROPTEMPO *)dwParam1;
 		DWORD MPropFlags = (DWORD)dwParam2;
 
 		if (!bass_initialized || OMCookedPlayer == nullptr)
@@ -442,45 +460,53 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 
 		if (MPropFlags & MIDIPROP_TEMPO)
 		{
-			if (MPropTempo->cbStruct != sizeof(MIDIPROPTEMPO)) {
+			if (MPropTempo->cbStruct != sizeof(MIDIPROPTEMPO))
+			{
 				return DebugResult("MODM_PROPERTIES", MMSYSERR_INVALPARAM, "Invalid pointer to MIDIPROPTEMPO struct.");
 			}
-			else if (MPropFlags & MIDIPROP_SET) {
+			else if (MPropFlags & MIDIPROP_SET)
+			{
 				PrintMessageToDebugLog("MODM_PROPERTIES", "CookedPlayer's tempo set to received value.");
 				OMCookedPlayer->Tempo = MPropTempo->dwTempo;
 				PrintVarToDebugLog("MODM_PROPERTIES", "Received Tempo", &OMCookedPlayer->Tempo, PRINT_UINT32);
 				OMCookedPlayer->TempoMulti = ((OMCookedPlayer->Tempo * 10) / OMCookedPlayer->TimeDiv);
-				PrintVarToDebugLog("MODM_PROPERTIES", "New TempoMulti", &OMCookedPlayer->TempoMulti, PRINT_UINT32); 
+				PrintVarToDebugLog("MODM_PROPERTIES", "New TempoMulti", &OMCookedPlayer->TempoMulti, PRINT_UINT32);
 			}
-			else if (MPropFlags & MIDIPROP_GET) {
+			else if (MPropFlags & MIDIPROP_GET)
+			{
 				PrintMessageToDebugLog("MODM_PROPERTIES", "CookedPlayer's tempo sent to MIDI application.");
 				MPropTempo->dwTempo = OMCookedPlayer->Tempo;
 			}
 		}
-		else if (MPropFlags & MIDIPROP_TIMEDIV) {
+		else if (MPropFlags & MIDIPROP_TIMEDIV)
+		{
 
-			if (MPropTimeDiv->cbStruct != sizeof(MIDIPROPTIMEDIV)) {
+			if (MPropTimeDiv->cbStruct != sizeof(MIDIPROPTIMEDIV))
+			{
 				return DebugResult("MODM_PROPERTIES", MMSYSERR_INVALPARAM, "Invalid pointer to MIDIPROPTIMEDIV struct.");
 			}
-			else if (MPropFlags & MIDIPROP_SET) {
+			else if (MPropFlags & MIDIPROP_SET)
+			{
 				PrintMessageToDebugLog("MODM_PROPERTIES", "CookedPlayer's time division set to received value.");
 				OMCookedPlayer->TimeDiv = MPropTimeDiv->dwTimeDiv;
 				PrintVarToDebugLog("MODM_PROPERTIES", "Received TimeDiv", &OMCookedPlayer->TimeDiv, PRINT_UINT32);
 				OMCookedPlayer->TempoMulti = ((OMCookedPlayer->Tempo * 10) / OMCookedPlayer->TimeDiv);
 				PrintVarToDebugLog("MODM_PROPERTIES", "New TempoMulti", &OMCookedPlayer->TempoMulti, PRINT_UINT32);
 			}
-			else if (MPropFlags & MIDIPROP_GET) {
+			else if (MPropFlags & MIDIPROP_GET)
+			{
 				PrintMessageToDebugLog("MODM_PROPERTIES", "CookedPlayer's time division sent to MIDI application.");
 				MPropTimeDiv->dwTimeDiv = OMCookedPlayer->TimeDiv;
 			}
 		}
-		else return DebugResult("MODM_PROPERTIES", MMSYSERR_INVALPARAM, "Invalid properties.");
+		else
+			return DebugResult("MODM_PROPERTIES", MMSYSERR_INVALPARAM, "Invalid properties.");
 
 		return MMSYSERR_NOERROR;
 	}
 	case MODM_GETPOS:
 	{
-		MMTIME* MMTime = (MMTIME*)dwParam1;
+		MMTIME *MMTime = (MMTIME *)dwParam1;
 
 		if (!bass_initialized || OMCookedPlayer == nullptr)
 			return DebugResult("MODM_GETPOS", MIDIERR_NOTREADY, "You can't call midiStreamPosition with a normal MIDI stream, or the driver isn't ready.");
@@ -490,8 +516,9 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 
 		PrintMessageToDebugLog("MODM_GETPOS", "The app wants to know the current position of the stream.");
 
-		RESET:
-		switch (MMTime->wType) {
+	RESET:
+		switch (MMTime->wType)
+		{
 		case TIME_BYTES:
 			PrintMessageToDebugLog("TIME_BYTES", "The app wanted it in bytes.");
 			MMTime->u.cb = OMCookedPlayer->ByteAccumulator;
@@ -519,7 +546,8 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		if (!bass_initialized || OMCookedPlayer == nullptr)
 			return DebugResult("MODM_RESTART", MMSYSERR_NOTENABLED, "You can't call midiStreamRestart with a normal MIDI stream, or the driver isn't ready.");
 
-		if (OMCookedPlayer->Paused) {
+		if (OMCookedPlayer->Paused)
+		{
 			OMCookedPlayer->Paused = FALSE;
 			PrintMessageToDebugLog("MODM_RESTART", "CookedPlayer is now playing.");
 		}
@@ -531,7 +559,8 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		if (!bass_initialized || OMCookedPlayer == nullptr)
 			return DebugResult("MODM_PAUSE", MMSYSERR_NOTENABLED, "You can't call midiStreamPause with a normal MIDI stream, or the driver isn't ready.");
 
-		if (!OMCookedPlayer->Paused) {
+		if (!OMCookedPlayer->Paused)
+		{
 			OMCookedPlayer->Paused = TRUE;
 			ResetSynth(FALSE, FALSE);
 			PrintMessageToDebugLog("MODM_PAUSE", "CookedPlayer is now paused.");
@@ -550,7 +579,8 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		ResetSynth(FALSE, TRUE);
 		RetVal = DequeueMIDIHDRs();
 
-		if (!RetVal) PrintMessageToDebugLog("MODM_STOP", "CookedPlayer is now stopped.");
+		if (!RetVal)
+			PrintMessageToDebugLog("MODM_STOP", "CookedPlayer is now stopped.");
 		return RetVal;
 	}
 	case MODM_RESET:
@@ -561,14 +591,14 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		return (OMCookedMode ? DequeueMIDIHDRs() : MMSYSERR_NOERROR);
 	case MODM_PREPARE:
 	{
-		MIDIHDR* MIDIHeader = (MIDIHDR*)dwParam1;
+		MIDIHDR *MIDIHeader = (MIDIHDR *)dwParam1;
 
 		// Pass it to a KDMAPI function
 		return PrepareLongData(MIDIHeader, dwParam2);
 	}
 	case MODM_UNPREPARE:
 	{
-		MIDIHDR* MIDIHeader = (MIDIHDR*)dwParam1;
+		MIDIHDR *MIDIHeader = (MIDIHDR *)dwParam1;
 
 		// Pass it to a KDMAPI function
 		return UnprepareLongData(MIDIHeader, dwParam2);
@@ -579,14 +609,16 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 	case MODM_GETDEVCAPS:
 		// Return OM's caps to the app
 		return GiveOmniMIDICaps((PVOID)dwParam1, (DWORD)dwParam2);
-	case MODM_GETVOLUME: {
+	case MODM_GETVOLUME:
+	{
 		// Tell the app the current output volume of the driver
 		PrintMessageToDebugLog("MODM_GETVOLUME", "The app wants to know the current output volume of the driver.");
-		*(LONG*)dwParam1 = (LONG)(SynthVolume * 0xFFFF);
+		*(LONG *)dwParam1 = (LONG)(SynthVolume * 0xFFFF);
 		PrintMessageToDebugLog("MODM_GETVOLUME", "The app knows the volume now.");
 		return MMSYSERR_NOERROR;
 	}
-	case MODM_SETVOLUME: {
+	case MODM_SETVOLUME:
+	{
 		// The app isn't allowed to set the volume, everything's fine anyway
 		PrintMessageToDebugLog("MODM_SETVOLUME", "Dummy, the app has no control over the driver's audio output.");
 		// SynthVolume = (int)(10000 + ((*(LONG*)dwParam1) - 65535) * (double)(0 - 10000) / (0 - 65535));
@@ -594,28 +626,30 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 	}
 	case MODM_OPEN:
 	{
-		if (PreventInit) {
+		if (PreventInit)
+		{
 			PrintMessageToDebugLog("MODM_OPEN", "The app is dumb and requested to open the stream again during the initialization process...");
 			return MIDIERR_NOTREADY;
 		}
 
 		PrintMessageToDebugLog("MODM_OPEN", "The app requested the driver to initialize its audio stream.");
-		if (!AlreadyInitializedViaKDMAPI && !bass_initialized) {
+		if (!AlreadyInitializedViaKDMAPI && !bass_initialized)
+		{
 			// Prevent the app from calling MODM_OPEN again...
 			PreventInit = TRUE;
 
 			// Parse callback and instance
 			// AddVectoredExceptionHandler(1, OmniMIDICrashHandler);
 			PrintMessageToDebugLog("MODM_OPEN", "Preparing callback data (If present)...");
-			LPMIDIOPENDESC OMMPD = reinterpret_cast<MIDIOPENDESC*>(dwParam1);
+			LPMIDIOPENDESC OMMPD = reinterpret_cast<MIDIOPENDESC *>(dwParam1);
 			PrintMIDIOPENDESCToDebugLog("MODM_OPEN", OMMPD, dwUser, (DWORD)dwParam2);
 
 			if (!InitializeCallbackFeatures(
-				OMMPD->hMidi,
-				OMMPD->dwCallback,
-				OMMPD->dwInstance,
-				NULL,
-				(DWORD)dwParam2))
+					OMMPD->hMidi,
+					OMMPD->dwCallback,
+					OMMPD->dwInstance,
+					NULL,
+					(DWORD)dwParam2))
 			{
 				PrintMessageToDebugLog("MODM_OPEN", "InitializeCallbackFeatures failed. Unable to complete MODM_OPEN.");
 				return MMSYSERR_INVALPARAM;
@@ -626,7 +660,8 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 
 			// Open the driver
 			PrintMessageToDebugLog("MODM_OPEN", "Initializing driver...");
-			if (!DoStartClient()) {
+			if (!DoStartClient())
+			{
 				PrintMessageToDebugLog("MODM_OPEN", "The driver failed to initialize.");
 				return MMSYSERR_ERROR;
 			}
@@ -646,14 +681,18 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 
 		return MMSYSERR_ALLOCATED;
 	}
-	case MODM_CLOSE: {
-		if (PreventInit) DebugResult("MODM_CLOSE", MMSYSERR_ALLOCATED, "The driver is currently being initialized or closed. Wait before closing it again!");
+	case MODM_CLOSE:
+	{
+		if (PreventInit)
+			DebugResult("MODM_CLOSE", MMSYSERR_ALLOCATED, "The driver is currently being initialized or closed. Wait before closing it again!");
 
-		if (!AlreadyInitializedViaKDMAPI) {
+		if (!AlreadyInitializedViaKDMAPI)
+		{
 			// Prevent the app from calling MODM_CLOSE again...
 			PreventInit = TRUE;
 
-			if (DriverInitStatus) {
+			if (DriverInitStatus)
+			{
 				// Prevent BASS from reinitializing itself
 				block_bassinit = TRUE;
 
@@ -673,7 +712,8 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 
 			PrintMessageToDebugLog("MODM_CLOSE", "Everything is fine.");
 		}
-		else PrintMessageToDebugLog("MODM_CLOSE", "The driver is already in use via KDMAPI. Cannot terminate it!");
+		else
+			PrintMessageToDebugLog("MODM_CLOSE", "The driver is already in use via KDMAPI. Cannot terminate it!");
 
 		PreventInit = FALSE;
 		return DebugResult("MODM_CLOSE", MMSYSERR_NOERROR, "The driver has been stopped.");
@@ -683,12 +723,13 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 	case DRV_QUERYDEVICEINTERFACESIZE:
 	case DRV_QUERYDEVICEINTERFACE:
 		return MMSYSERR_NOERROR;
-	default: {
+	default:
+	{
 		// Unrecognized uMsg
-		char* Msg = new char[NTFS_MAX_PATH];
+		char *Msg = new char[NTFS_MAX_PATH];
 		sprintf(Msg,
-			"The application sent an unknown message! ID: 0x%08x - dwUser: 0x%08x - dwParam1: 0x%08x - dwParam2: 0x%08x",
-			uMsg, dwUser, dwParam1, dwParam2);
+				"The application sent an unknown message! ID: 0x%08x - dwUser: 0x%08x - dwParam1: 0x%08x - dwParam2: 0x%08x",
+				uMsg, dwUser, dwParam1, dwParam2);
 		RetVal = DebugResult("modMessage", MMSYSERR_ERROR, Msg);
 		delete[] Msg;
 		return RetVal;
@@ -697,19 +738,24 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 }
 
 // test
-UINT WINAPI KDMAPI_midiOutGetNumDevs(void) {
+UINT WINAPI KDMAPI_midiOutGetNumDevs(void)
+{
 	return 1;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutGetDevCapsW(UINT_PTR uDeviceID, LPMIDIOUTCAPSW lpCaps, UINT uSize) {
-	if (lpCaps == NULL || uSize != sizeof(MIDIOUTCAPSW)) return MMSYSERR_INVALPARAM;
+MMRESULT WINAPI KDMAPI_midiOutGetDevCapsW(UINT_PTR uDeviceID, LPMIDIOUTCAPSW lpCaps, UINT uSize)
+{
+	if (lpCaps == NULL || uSize != sizeof(MIDIOUTCAPSW))
+		return MMSYSERR_INVALPARAM;
 
 	return GiveOmniMIDICaps(lpCaps, uSize);
 }
 
-MMRESULT WINAPI KDMAPI_midiOutGetDevCapsA(UINT_PTR uDeviceID, LPMIDIOUTCAPSA lpCaps, UINT uSize) {
+MMRESULT WINAPI KDMAPI_midiOutGetDevCapsA(UINT_PTR uDeviceID, LPMIDIOUTCAPSA lpCaps, UINT uSize)
+{
 	// Return the output device, but ASCII/Multibyte
-	if (lpCaps == NULL || uSize != sizeof(MIDIOUTCAPSA)) return MMSYSERR_INVALPARAM;
+	if (lpCaps == NULL || uSize != sizeof(MIDIOUTCAPSA))
+		return MMSYSERR_INVALPARAM;
 
 	// Parse info in Unicode
 	MIDIOUTCAPSW myCapsW;
@@ -722,7 +768,8 @@ MMRESULT WINAPI KDMAPI_midiOutGetDevCapsA(UINT_PTR uDeviceID, LPMIDIOUTCAPSA lpC
 #endif
 
 	// Translate them to ASCII/Multibyte
-	if (ret == MMSYSERR_NOERROR) {
+	if (ret == MMSYSERR_NOERROR)
+	{
 		MIDIOUTCAPSA myCapsA;
 		myCapsA.wMid = myCapsW.wMid;
 		myCapsA.wPid = myCapsW.wPid;
@@ -738,13 +785,16 @@ MMRESULT WINAPI KDMAPI_midiOutGetDevCapsA(UINT_PTR uDeviceID, LPMIDIOUTCAPSA lpC
 	return ret;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutShortMsg(HMIDIOUT hMidiOut, DWORD dwMsg) {
+MMRESULT WINAPI KDMAPI_midiOutShortMsg(HMIDIOUT hMidiOut, DWORD dwMsg)
+{
 	SendDirectData(dwMsg);
 	return MMSYSERR_NOERROR;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutOpen(LPHMIDIOUT lphmo, UINT uDeviceID, DWORD_PTR dwCallback, DWORD_PTR dwCallbackInstance, DWORD dwFlags) {
-	if (!AlreadyInitializedViaKDMAPI) {
+MMRESULT WINAPI KDMAPI_midiOutOpen(LPHMIDIOUT lphmo, UINT uDeviceID, DWORD_PTR dwCallback, DWORD_PTR dwCallbackInstance, DWORD dwFlags)
+{
+	if (!AlreadyInitializedViaKDMAPI)
+	{
 		// Initialize a dummy out device
 		*lphmo = (HMIDIOUT)OMDummy;
 
@@ -773,10 +823,13 @@ MMRESULT WINAPI KDMAPI_midiOutOpen(LPHMIDIOUT lphmo, UINT uDeviceID, DWORD_PTR d
 	return MMSYSERR_ALLOCATED;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutClose(HMIDIOUT hMidiOut) {
+MMRESULT WINAPI KDMAPI_midiOutClose(HMIDIOUT hMidiOut)
+{
 	// Close OM
-	if (AlreadyInitializedViaKDMAPI) {
-		if (!TerminateKDMAPIStream()) return MMSYSERR_NOMEM;
+	if (AlreadyInitializedViaKDMAPI)
+	{
+		if (!TerminateKDMAPIStream())
+			return MMSYSERR_NOMEM;
 
 		DriverSettings(0xFFFFE, NULL, NULL, NULL);
 
@@ -789,20 +842,24 @@ MMRESULT WINAPI KDMAPI_midiOutClose(HMIDIOUT hMidiOut) {
 	return MMSYSERR_NOERROR;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutReset(HMIDIOUT hMidiOut) {
+MMRESULT WINAPI KDMAPI_midiOutReset(HMIDIOUT hMidiOut)
+{
 	ResetKDMAPIStream();
 	return MMSYSERR_NOERROR;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutPrepareHeader(HMIDIOUT hMidiOut, MIDIHDR* lpMidiOutHdr, UINT uSize) {
+MMRESULT WINAPI KDMAPI_midiOutPrepareHeader(HMIDIOUT hMidiOut, MIDIHDR *lpMidiOutHdr, UINT uSize)
+{
 	return PrepareLongData(lpMidiOutHdr, uSize);
 }
 
-MMRESULT WINAPI KDMAPI_midiOutUnprepareHeader(HMIDIOUT hMidiOut, MIDIHDR* lpMidiOutHdr, UINT uSize) {
+MMRESULT WINAPI KDMAPI_midiOutUnprepareHeader(HMIDIOUT hMidiOut, MIDIHDR *lpMidiOutHdr, UINT uSize)
+{
 	return UnprepareLongData(lpMidiOutHdr, uSize);
 }
 
-MMRESULT WINAPI KDMAPI_midiOutLongMsg(HMIDIOUT hMidiOut, MIDIHDR* lpMidiOutHdr, UINT uSize) {
+MMRESULT WINAPI KDMAPI_midiOutLongMsg(HMIDIOUT hMidiOut, MIDIHDR *lpMidiOutHdr, UINT uSize)
+{
 	// Forward the buffer to KDMAPI
 	MMRESULT Ret = SendDirectLongData(lpMidiOutHdr, uSize);
 
@@ -812,48 +869,58 @@ MMRESULT WINAPI KDMAPI_midiOutLongMsg(HMIDIOUT hMidiOut, MIDIHDR* lpMidiOutHdr, 
 	return Ret;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutCachePatches(HMIDIOUT hMidiOut, UINT wPatch, LPWORD lpPatchArray, UINT wFlags) {
+MMRESULT WINAPI KDMAPI_midiOutCachePatches(HMIDIOUT hMidiOut, UINT wPatch, LPWORD lpPatchArray, UINT wFlags)
+{
 	// Dummy, OmniMIDI uses SoundFonts
 	return MMSYSERR_NOERROR;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutCacheDrumPatches(HMIDIOUT hMidiOut, UINT wPatch, LPWORD lpKeyArray, UINT wFlags) {
+MMRESULT WINAPI KDMAPI_midiOutCacheDrumPatches(HMIDIOUT hMidiOut, UINT wPatch, LPWORD lpKeyArray, UINT wFlags)
+{
 	// Dummy, OmniMIDI uses SoundFonts
 	return MMSYSERR_NOERROR;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutMessage(HMIDIOUT hMidiOut, UINT uMsg, DWORD_PTR dw1, DWORD_PTR dw2) {
+MMRESULT WINAPI KDMAPI_midiOutMessage(HMIDIOUT hMidiOut, UINT uMsg, DWORD_PTR dw1, DWORD_PTR dw2)
+{
 	// Dummy, OmniMIDI uses SoundFonts
 	return MMSYSERR_NOERROR;
 }
 
-MMRESULT WINAPI KDMAPI_midiOutSetVolume(HMIDIOUT hMidiOut, DWORD dwVolume) {
+MMRESULT WINAPI KDMAPI_midiOutSetVolume(HMIDIOUT hMidiOut, DWORD dwVolume)
+{
 	// Set the volume, even though it won't work lol
 	return modMessage(0, MODM_SETVOLUME, OMUser, dwVolume, 0);
 }
 
-MMRESULT WINAPI KDMAPI_midiOutGetVolume(HMIDIOUT hMidiOut, LPDWORD lpdwVolume) {
+MMRESULT WINAPI KDMAPI_midiOutGetVolume(HMIDIOUT hMidiOut, LPDWORD lpdwVolume)
+{
 	// Get the volume
 	return modMessage(0, MODM_GETVOLUME, OMUser, (DWORD_PTR)lpdwVolume, 0);
 }
 
-MMRESULT WINAPI KDMAPI_midiOutGetID(HMIDIOUT hMidiOut, LPUINT puDeviceID) {
+MMRESULT WINAPI KDMAPI_midiOutGetID(HMIDIOUT hMidiOut, LPUINT puDeviceID)
+{
 	// Dummy, device is always 0
 	*puDeviceID = 0;
 	return MMSYSERR_NOERROR;
 }
 
-UINT WINAPI KDMAPI_mmsystemGetVersion(void) {
+UINT WINAPI KDMAPI_mmsystemGetVersion(void)
+{
 	// Dummy, not needed
 	return 0x0600U;
 }
 
-MMRESULT WINAPI KDMAPI_midiStreamOpen(LPHMIDISTRM lphStream, LPUINT puDeviceID, DWORD cMidi, DWORD_PTR dwCallback, DWORD_PTR dwCallbackInstance, DWORD fdwOpen) {
+MMRESULT WINAPI KDMAPI_midiStreamOpen(LPHMIDISTRM lphStream, LPUINT puDeviceID, DWORD cMidi, DWORD_PTR dwCallback, DWORD_PTR dwCallbackInstance, DWORD fdwOpen)
+{
 	MMRESULT retval = MMSYSERR_NOERROR;
 
-	if (cMidi != 1 || lphStream == NULL || puDeviceID == NULL) return MMSYSERR_INVALPARAM;
+	if (cMidi != 1 || lphStream == NULL || puDeviceID == NULL)
+		return MMSYSERR_INVALPARAM;
 
-	if (!AlreadyInitializedViaKDMAPI) {
+	if (!AlreadyInitializedViaKDMAPI)
+	{
 		// Setup the Callback
 		if (!InitializeCallbackFeatures((HMIDI)(*lphStream), dwCallback, dwCallbackInstance, OMUser, fdwOpen | 0x00000002L))
 		{
@@ -882,9 +949,11 @@ MMRESULT WINAPI KDMAPI_midiStreamOpen(LPHMIDISTRM lphStream, LPUINT puDeviceID, 
 	return MMSYSERR_ALLOCATED;
 }
 
-MMRESULT WINAPI KDMAPI_midiStreamClose(HMIDISTRM hStream) {
+MMRESULT WINAPI KDMAPI_midiStreamClose(HMIDISTRM hStream)
+{
 	// Terminate CookedPlayer, free up hStream and return 0
-	if (AlreadyInitializedViaKDMAPI) {
+	if (AlreadyInitializedViaKDMAPI)
+	{
 		if (TerminateKDMAPIStream())
 			RunCallbackFunction(MM_MOM_CLOSE, (DWORD_PTR)hStream, 0);
 
@@ -895,40 +964,48 @@ MMRESULT WINAPI KDMAPI_midiStreamClose(HMIDISTRM hStream) {
 	return MMSYSERR_INVALHANDLE;
 }
 
-MMRESULT WINAPI KDMAPI_midiStreamOut(HMIDISTRM hStream, LPMIDIHDR lpMidiOutHdr, UINT uSize) {
+MMRESULT WINAPI KDMAPI_midiStreamOut(HMIDISTRM hStream, LPMIDIHDR lpMidiOutHdr, UINT uSize)
+{
 	// Give stream data to CookedPlayer
 	return modMessage(0, MODM_STRMDATA, OMUser, (DWORD_PTR)lpMidiOutHdr, uSize);
 }
 
-MMRESULT WINAPI KDMAPI_midiStreamPause(HMIDISTRM hStream) {
+MMRESULT WINAPI KDMAPI_midiStreamPause(HMIDISTRM hStream)
+{
 	// Pause CookedPlayer
 	return modMessage(0, MODM_PAUSE, OMUser, 0, 0);
 }
 
-MMRESULT WINAPI KDMAPI_midiStreamRestart(HMIDISTRM hStream) {
+MMRESULT WINAPI KDMAPI_midiStreamRestart(HMIDISTRM hStream)
+{
 	// Play CookedPlayer
 	return modMessage(0, MODM_RESTART, OMUser, 0, 0);
 }
 
-MMRESULT WINAPI KDMAPI_midiStreamStop(HMIDISTRM hStream) {
+MMRESULT WINAPI KDMAPI_midiStreamStop(HMIDISTRM hStream)
+{
 	// Stop CookedPlayer
 	return modMessage(0, MODM_STOP, OMUser, 0, 0);
 }
 
-MMRESULT WINAPI KDMAPI_midiStreamProperty(HMIDISTRM hStream, LPBYTE lppropdata, DWORD dwProperty) {
+MMRESULT WINAPI KDMAPI_midiStreamProperty(HMIDISTRM hStream, LPBYTE lppropdata, DWORD dwProperty)
+{
 	// Pass the prop. data to modMessage
 	return modMessage(0, MODM_PROPERTIES, OMUser, (DWORD_PTR)lppropdata, dwProperty);
 }
 
-MMRESULT WINAPI KDMAPI_midiStreamPosition(HMIDISTRM hStream, LPMMTIME pmmt, UINT cbmmt) {
+MMRESULT WINAPI KDMAPI_midiStreamPosition(HMIDISTRM hStream, LPMMTIME pmmt, UINT cbmmt)
+{
 	// Give CookedPlayer position to MIDI app
 	return modMessage(0, MODM_GETPOS, OMUser, (DWORD_PTR)pmmt, cbmmt);
 }
 
-VOID WINAPI KDMAPI_poweredByKeppy() {
+VOID WINAPI KDMAPI_poweredByKeppy()
+{
 	MessageBox(NULL, L"With love by Keppy.", L"Windows Multimedia Wrapper", MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL);
 }
 
-DWORD WINAPI FINAL_timeGetTime() {
+DWORD WINAPI FINAL_timeGetTime()
+{
 	return timeGetTime64();
 }

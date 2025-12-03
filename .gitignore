@@ -123,3 +123,5 @@ OmniMIDIv2/packages/
 OmniMIDIv2/lib/
 OmniMIDIv2/Release (MSVC++)/
 OmniMIDIv2/Release (WINNTCRT)/
+*.tlog
+/OmniMIDI/OmniMIDI/Release
