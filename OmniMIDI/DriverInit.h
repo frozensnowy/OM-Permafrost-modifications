@@ -1205,6 +1205,8 @@ BEGSWITCH:
 
 				// Store the latency for debug
 				ManagedDebugInfo.AudioLatency = (DOUBLE)FinalBuffer;
+				ManagedDebugInfo.ActualSampleRate = ManagedSettings.AudioFrequency;
+				ManagedDebugInfo.AsioInputLatency = 0.0f; // Not applicable for DirectSound
 
 				// If the minimum buffer is bigger than the requested buffer length, use the minimum buffer value instead
 				PrintMessageToDebugLog("InitializeBASSOutput", "Setting buffer...");
@@ -1280,7 +1282,9 @@ BEGSWITCH:
 				{
 					// Store the latency for debug
 					ManagedDebugInfo.AudioBufferSize = infoW.buflen / 8;
-					ManagedDebugInfo.AudioLatency = ((DOUBLE)ManagedDebugInfo.AudioBufferSize * 1000.0f / (DOUBLE)ManagedSettings.AudioFrequency);
+					ManagedDebugInfo.AudioLatency = ((DOUBLE)ManagedDebugInfo.AudioBufferSize * 1000.0f / (DOUBLE)infoW.freq);
+					ManagedDebugInfo.ActualSampleRate = infoW.freq;
+					ManagedDebugInfo.AsioInputLatency = 0.0f; // Not applicable for WASAPI
 					PrintMessageToDebugLog("InitializeWASAPIFunc", "Stored latency information.");
 				}
 			}
@@ -1349,7 +1353,9 @@ BEGSWITCH:
 			// Store the latency for debug
 			ManagedDebugInfo.AudioBufferSize = SamplesPerFrame;
 			ManagedDebugInfo.AudioLatency = ((DOUBLE)SamplesPerFrame * 1000.0f / (DOUBLE)ManagedSettings.AudioFrequency) * ManagedSettings.XASPFSweepRate;
-			PrintMessageToDebugLog("InitializeWASAPIFunc", "Stored latency information.");
+			ManagedDebugInfo.ActualSampleRate = ManagedSettings.AudioFrequency;
+			ManagedDebugInfo.AsioInputLatency = 0.0f; // Not applicable for XAudio2
+			PrintMessageToDebugLog("InitializeXAFunc", "Stored latency information.");
 
 			// Prepare audio buffer
 			FSndBuf = new float[SamplesPerFrame];
@@ -1476,9 +1482,12 @@ BEGSWITCH:
 				BASS_ASIO_Start(0, std::thread::hardware_concurrency());
 				CheckUp(TRUE, ERRORCODE, "ASIO Start Output", TRUE);
 
-				// Store the latency for debug
+				// Store the latency for debug - both input and output
+				DOUBLE asioRate = BASS_ASIO_GetRate();
 				ManagedDebugInfo.AudioBufferSize = BASS_ASIO_GetLatency(FALSE);
-				ManagedDebugInfo.AudioLatency = ((DOUBLE)ManagedDebugInfo.AudioBufferSize * 1000.0f / BASS_ASIO_GetRate());
+				ManagedDebugInfo.AudioLatency = ((DOUBLE)ManagedDebugInfo.AudioBufferSize * 1000.0f / asioRate);
+				ManagedDebugInfo.AsioInputLatency = ((DOUBLE)BASS_ASIO_GetLatency(TRUE) * 1000.0f / asioRate);
+				ManagedDebugInfo.ActualSampleRate = (DWORD)asioRate;
 				CheckUp(TRUE, ERRORCODE, "ASIO Get Frequency", FALSE);
 
 				PrintMessageToDebugLog("InitializeASIOFunc", "Done!");

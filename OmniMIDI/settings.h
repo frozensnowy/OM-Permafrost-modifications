@@ -1434,6 +1434,14 @@ void FillContentDebug()
 	PipeContent.append(L"|AudioLatency = " + std::to_wstring(ManagedDebugInfo.AudioLatency));
 	PipeContent.append(L"|SFsList = " + std::to_wstring(ManagedDebugInfo.CurrentSFList));
 
+	// Output engine type for latency widget
+	// 0=AUDTOWAV, 1=DXAUDIO/DirectSound, 2=ASIO, 3=WASAPI, 4=XAudio2
+	PipeContent.append(L"|OutputEngine = " + std::to_wstring(ManagedSettings.CurrentEngine));
+
+	// Extended latency info for complete latency breakdown
+	PipeContent.append(L"|AsioInputLatency = " + std::to_wstring(ManagedDebugInfo.AsioInputLatency));
+	PipeContent.append(L"|ActualSampleRate = " + std::to_wstring(ManagedDebugInfo.ActualSampleRate));
+
 	// Append recent MIDI events (format: ME=channel,type,data1,data2)
 	// Type: 0=NoteOff, 1=NoteOn, 2=CC, 3=PC, 4=PitchBend
 	while (DebugMidiEventReadHead < DebugMidiEventWriteHead)
@@ -1455,10 +1463,12 @@ void FillContentDebug()
 		StartDebugPipe(TRUE);
 }
 
+// Rate limiter for latency queries - don't hammer ASIO/WASAPI drivers
+static ULONGLONG g_LastLatencyQueryTime = 0;
+static const ULONGLONG LATENCY_QUERY_INTERVAL_MS = 1000; // Only query once per second
+
 void ParseDebugData()
 {
-	DWORD ASIOTempOutLatency;
-
 	if (BASSLoadedToMemory && bass_initialized)
 	{
 		BASS_ChannelGetAttribute(OMStream, BASS_ATTRIB_CPU, &ManagedDebugInfo.RenderingTime);
@@ -1477,17 +1487,68 @@ void ParseDebugData()
 			AudioBus_UpdateAllChannelVoices(ManagedDebugInfo.ActiveVoices);
 		}
 
-		/*
-		ManagedDebugInfo.HealthThreadTime = GetThreadUsage(&HealthThread);
-		ManagedDebugInfo.ATThreadTime = GetThreadUsage(&ATThread);
-		ManagedDebugInfo.EPThreadTime = GetThreadUsage(&EPThread);
-		ManagedDebugInfo.CookedThreadTime = GetThreadUsage(&CookedThread);
-		*/
+		// Live latency updates - rate limited to avoid hammering drivers
+		// Some ASIO drivers get unstable if queried too frequently during buffer changes
+		ULONGLONG currentTime = GetTickCount64();
+		if (currentTime - g_LastLatencyQueryTime >= LATENCY_QUERY_INTERVAL_MS)
+		{
+			g_LastLatencyQueryTime = currentTime;
+
+			switch (ManagedSettings.CurrentEngine)
+			{
+#if !defined(_M_ARM64)
+			case ASIO_ENGINE:
+			{
+				// ASIO: Query current latency from device
+				// Only query if ASIO is actually started and in a stable state
+				if (BASS_ASIO_IsStarted())
+				{
+					DOUBLE asioRate = BASS_ASIO_GetRate();
+					if (asioRate > 0)
+					{
+						DWORD outLatency = BASS_ASIO_GetLatency(FALSE);
+						DWORD inLatency = BASS_ASIO_GetLatency(TRUE);
+
+						// Sanity check - ignore garbage values during driver transitions
+						if (outLatency > 0 && outLatency < 100000 && asioRate >= 8000 && asioRate <= 384000)
+						{
+							ManagedDebugInfo.AudioBufferSize = outLatency;
+							ManagedDebugInfo.AudioLatency = ((DOUBLE)outLatency * 1000.0 / asioRate);
+							ManagedDebugInfo.AsioInputLatency = ((DOUBLE)inLatency * 1000.0 / asioRate);
+							ManagedDebugInfo.ActualSampleRate = (DWORD)asioRate;
+						}
+					}
+				}
+				break;
+			}
+#endif
+			case WASAPI_ENGINE:
+			{
+				// WASAPI: Query current buffer info
+				BASS_WASAPI_INFO infoW;
+				if (BASS_WASAPI_GetInfo(&infoW))
+				{
+					// Sanity check values
+					if (infoW.freq >= 8000 && infoW.freq <= 384000 && infoW.buflen > 0)
+					{
+						ManagedDebugInfo.AudioBufferSize = infoW.buflen / 8;
+						ManagedDebugInfo.AudioLatency = ((DOUBLE)ManagedDebugInfo.AudioBufferSize * 1000.0 / (DOUBLE)infoW.freq);
+						ManagedDebugInfo.ActualSampleRate = infoW.freq;
+					}
+				}
+				break;
+			}
+			// XAudio2 and DirectSound buffer sizes are fixed at init, no live updates needed
+			default:
+				break;
+			}
+		}
 	}
 	else
 	{
 		ManagedDebugInfo.RenderingTime = 0.0f;
 		ManagedDebugInfo.AudioLatency = 0.0;
+		ManagedDebugInfo.AsioInputLatency = 0.0;
 		for (int i = 0; i <= 15; ++i)
 			ManagedDebugInfo.ActiveVoices[i] = 0;
 	}
