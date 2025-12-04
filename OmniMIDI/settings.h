@@ -3,6 +3,8 @@ OmniMIDI settings loading system
 */
 #pragma once
 
+#include "AudioBus.h"
+
 void SetBufferPointers()
 {
 	_PrsData = HyperMode ? ParseDataHyper : ParseData;
@@ -1255,7 +1257,7 @@ void SFDynamicLoaderCheck()
 		{
 			RegSetValueEx(SFDynamicLoader.Address, L"permafrost_reload", 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
 			PrintMessageToDebugLog("SFDynamicLoader", "Permafrost reload triggered, re-querying service...");
-			
+
 			// Re-query Permafrost for updated soundfont list
 			std::wstring permafrostListData;
 			if (RequestSoundFontListFromPermafrost(AppNameW, AppPathW, GetCurrentProcessId(), permafrostListData))
@@ -1340,14 +1342,32 @@ void CheckVolume(BOOL Closing)
 					right = HIWORD(level); // the right level
 				}
 
+				// Write to registry (for legacy mixer compatibility)
 				RegSetValueEx(MainKey.Address, L"leftvol", 0, REG_DWORD, (LPBYTE)&left, sizeof(left));
 				RegSetValueEx(MainKey.Address, L"rightvol", 0, REG_DWORD, (LPBYTE)&right, sizeof(right));
+
+				// Also update AudioBus shared memory for Permafrost
+				// According to ChatGPT this is the modern way, shared memory is faster than registry
+				if (AudioBus_IsConnected())
+				{
+					DWORD totalVoices = 0;
+					for (int i = 0; i < 16; i++)
+						totalVoices += ManagedDebugInfo.ActiveVoices[i];
+
+					AudioBus_UpdateLevels(levels[0], levels[1], totalVoices, ManagedDebugInfo.RenderingTime);
+				}
 			}
 		}
 		else
 		{
 			RegSetValueEx(MainKey.Address, L"leftvol", 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
 			RegSetValueEx(MainKey.Address, L"rightvol", 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
+
+			// Clear AudioBus levels when closing
+			if (AudioBus_IsConnected())
+			{
+				AudioBus_UpdateLevels(0.0f, 0.0f, 0, 0.0f);
+			}
 		}
 	}
 	catch (...)
@@ -1414,6 +1434,19 @@ void FillContentDebug()
 	PipeContent.append(L"|AudioLatency = " + std::to_wstring(ManagedDebugInfo.AudioLatency));
 	PipeContent.append(L"|SFsList = " + std::to_wstring(ManagedDebugInfo.CurrentSFList));
 
+	// Append recent MIDI events (format: ME=channel,type,data1,data2)
+	// Type: 0=NoteOff, 1=NoteOn, 2=CC, 3=PC, 4=PitchBend
+	while (DebugMidiEventReadHead < DebugMidiEventWriteHead)
+	{
+		DWORD readPos = DebugMidiEventReadHead % DEBUG_MIDI_EVENT_BUFFER_SIZE;
+		DebugMidiEvent &evt = DebugMidiEvents[readPos];
+		PipeContent.append(L"|ME=" + std::to_wstring(evt.Channel) + L"," +
+						   std::to_wstring(evt.EventType) + L"," +
+						   std::to_wstring(evt.Data1) + L"," +
+						   std::to_wstring(evt.Data2));
+		DebugMidiEventReadHead++;
+	}
+
 	PipeContent.append(L"\n\0");
 
 	const WCHAR *PCW = PipeContent.c_str();
@@ -1437,6 +1470,13 @@ void ParseDebugData()
 				ManagedDebugInfo.ActiveVoices[i] = temp;
 		}
 
+		// Update AudioBus with per-channel voice counts
+		// This lets Permafrost show activity per channel without polling registry
+		if (AudioBus_IsConnected())
+		{
+			AudioBus_UpdateAllChannelVoices(ManagedDebugInfo.ActiveVoices);
+		}
+
 		/*
 		ManagedDebugInfo.HealthThreadTime = GetThreadUsage(&HealthThread);
 		ManagedDebugInfo.ATThreadTime = GetThreadUsage(&ATThread);
@@ -1451,6 +1491,10 @@ void ParseDebugData()
 		for (int i = 0; i <= 15; ++i)
 			ManagedDebugInfo.ActiveVoices[i] = 0;
 	}
+
+	// Check for mixer commands from Permafrost
+	// This polls the registry and shared memory for panic/reset requests
+	PollPermafrostMixerCommands();
 }
 
 void SendDebugDataToPipe()

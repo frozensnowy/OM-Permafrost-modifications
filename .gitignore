@@ -125,3 +125,4 @@ OmniMIDIv2/Release (MSVC++)/
 OmniMIDIv2/Release (WINNTCRT)/
 *.tlog
 /OmniMIDI/OmniMIDI/Release
+/OmniMIDI/OmniMIDI/Debug

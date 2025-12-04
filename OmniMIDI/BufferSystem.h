@@ -9,6 +9,36 @@ int __inline BufferCheck(void) {
 	return (EVBuffer.ReadHead != EVBuffer.WriteHead);
 }
 
+// Capture MIDI event for debug pipe streaming (rate-limited to ~60/sec)
+void __inline CaptureDebugMidiEvent(BYTE cmd, BYTE channel, BYTE data1, BYTE data2) {
+	// Rate limit: only capture if enough time has passed
+	DWORD currentTime = GetTickCount();
+	if ((currentTime - LastDebugMidiEventTime) < DEBUG_MIDI_EVENT_INTERVAL_MS)
+		return;
+	
+	LastDebugMidiEventTime = currentTime;
+	
+	// Determine event type
+	BYTE eventType;
+	switch (cmd) {
+		case MIDI_NOTEOFF: eventType = 0; break;
+		case MIDI_NOTEON:  eventType = (data2 > 0) ? 1 : 0; break;  // vel 0 = note off
+		case MIDI_CMC:     eventType = 2; break;  // Control Change
+		case MIDI_PROGCHAN: eventType = 3; break; // Program Change
+		case MIDI_PITCHWHEEL: eventType = 4; break;
+		default: return;  // Don't capture other events
+	}
+	
+	// Write to circular buffer
+	DWORD writePos = DebugMidiEventWriteHead % DEBUG_MIDI_EVENT_BUFFER_SIZE;
+	DebugMidiEvents[writePos].Channel = channel;
+	DebugMidiEvents[writePos].EventType = eventType;
+	DebugMidiEvents[writePos].Data1 = data1;
+	DebugMidiEvents[writePos].Data2 = data2;
+	
+	DebugMidiEventWriteHead++;
+}
+
 BOOL __inline CheckIfEventIsToIgnore(DWORD dwParam1)
 {
 	/*
@@ -171,6 +201,9 @@ bool __inline SendToBASSMIDI(unsigned int sev) {
 	unsigned char ch = GETCHANNEL(tev);
 	unsigned char param1 = GETFP(tev);
 	unsigned char param2 = GETSP(tev);
+
+	// Capture for debug pipe streaming (rate-limited)
+	CaptureDebugMidiEvent(cmd, ch, param1, param2);
 
 	unsigned int len = 3;
 

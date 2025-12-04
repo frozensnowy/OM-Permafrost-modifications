@@ -380,6 +380,10 @@ void Supervisor(LPVOID lpV) {
 					// Check the current output volume
 					CheckVolume(FALSE);
 
+					// Poll for mixer commands from Permafrost (panic, etc.)
+					// This needs to run in the main health loop, not just when debug pipe is connected
+					PollPermafrostMixerCommands();
+
 					if (ManagedSettings.CurrentEngine == ASIO_ENGINE || ManagedSettings.CurrentEngine == WASAPI_ENGINE)
 						_ProcData = ManagedSettings.NotesCatcherWithAudio ? ProcDataSameThread : ProcData;
 				}

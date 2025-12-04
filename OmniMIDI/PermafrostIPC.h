@@ -1,6 +1,15 @@
 /*
 OmniMIDI Permafrost IPC
 Named pipe client for communication with Permafrost service
+
+This handles two-way communication with Permafrost:
+1. Requesting SoundFont lists (original functionality)
+2. Mixer control commands (panic, levels, etc.)
+3. Audio bus coordination (future)
+
+The protocol is simple text-based for easy debugging:
+- Commands are pipe-delimited: "COMMAND|param1|param2"
+- Responses are either data or "ERROR|message"
 */
 #pragma once
 
@@ -8,7 +17,18 @@ Named pipe client for communication with Permafrost service
 #define PERMAFROST_TIMEOUT_MS 1000
 #define PERMAFROST_BUFFER_SIZE 65536
 
+// Command prefixes for mixer operations
+// These are sent FROM Permafrost TO OmniMIDI via the watchdog check
+#define PERMAFROST_CMD_PANIC "PANIC"
+#define PERMAFROST_CMD_RESET "RESET"
+#define PERMAFROST_CMD_GET_LEVELS "GET_LEVELS"
+
+// Forward declaration - ResetSynth is defined in settings.h
+// We need this here because PermafrostIPC.h might be included before settings.h
+extern void ResetSynth(BOOL SwitchingBufferMode, BOOL ModeReset);
+
 static BOOL PermafrostAvailable = FALSE;
+static BOOL PermafrostMixerEnabled = FALSE;
 
 // Request SoundFont list from Permafrost service
 // Returns TRUE if successful and outListData contains .omlist format data
@@ -213,4 +233,201 @@ static BOOL IsPermafrostAvailable()
     }
 
     return FALSE;
+}
+
+// Send a command to Permafrost and get response
+// This is a simpler version for quick commands like PANIC
+static BOOL SendCommandToPermafrost(const char *command, std::string &outResponse)
+{
+    HANDLE hPipe = INVALID_HANDLE_VALUE;
+    BOOL success = FALSE;
+
+    try
+    {
+        hPipe = CreateFileW(
+            PERMAFROST_PIPE_NAME,
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            NULL,
+            OPEN_EXISTING,
+            0,
+            NULL);
+
+        if (hPipe == INVALID_HANDLE_VALUE)
+        {
+            return FALSE;
+        }
+
+        // Set pipe mode
+        DWORD mode = PIPE_READMODE_BYTE;
+        SetNamedPipeHandleState(hPipe, &mode, NULL, NULL);
+
+        // Write command
+        DWORD bytesWritten = 0;
+        if (!WriteFile(hPipe, command, (DWORD)strlen(command), &bytesWritten, NULL))
+        {
+            CloseHandle(hPipe);
+            return FALSE;
+        }
+
+        FlushFileBuffers(hPipe);
+
+        // Read response with short timeout
+        char buffer[4096] = {0};
+        DWORD bytesRead = 0;
+        DWORD startTime = GetTickCount();
+
+        while ((GetTickCount() - startTime) < 500) // 500ms timeout for commands
+        {
+            DWORD bytesAvailable = 0;
+            if (!PeekNamedPipe(hPipe, NULL, 0, NULL, &bytesAvailable, NULL))
+                break;
+
+            if (bytesAvailable > 0)
+            {
+                if (ReadFile(hPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0)
+                {
+                    buffer[bytesRead] = '\0';
+                    outResponse = buffer;
+                    success = TRUE;
+                    break;
+                }
+            }
+            Sleep(10);
+        }
+
+        CloseHandle(hPipe);
+    }
+    catch (...)
+    {
+        if (hPipe != INVALID_HANDLE_VALUE)
+            CloseHandle(hPipe);
+        return FALSE;
+    }
+
+    return success;
+}
+
+// Check for pending mixer commands from Permafrost
+// This is called from the watchdog/health thread to check for commands
+// Returns the command type if one is pending, or empty string if none
+static std::string CheckPermafrostMixerCommand()
+{
+    // For now, check via registry flag (simple and reliable)
+    // Permafrost sets a flag, we read and clear it
+
+    HKEY hKey = NULL;
+    std::string command = "";
+
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\OmniMIDI\\Mixer", 0,
+                      KEY_READ | KEY_WRITE, &hKey) == ERROR_SUCCESS)
+    {
+        DWORD panicFlag = 0;
+        DWORD dwType = REG_DWORD;
+        DWORD dwSize = sizeof(DWORD);
+
+        // Check panic flag
+        if (RegQueryValueExW(hKey, L"PanicRequest", NULL, &dwType,
+                             (LPBYTE)&panicFlag, &dwSize) == ERROR_SUCCESS)
+        {
+            if (panicFlag != 0)
+            {
+                command = PERMAFROST_CMD_PANIC;
+
+                // Clear the flag
+                DWORD zero = 0;
+                RegSetValueExW(hKey, L"PanicRequest", 0, REG_DWORD,
+                               (LPBYTE)&zero, sizeof(DWORD));
+            }
+        }
+
+        RegCloseKey(hKey);
+    }
+
+    return command;
+}
+
+// Execute a mixer command received from Permafrost
+// This is the dispatcher that calls the appropriate handler
+static void ExecutePermafrostMixerCommand(const std::string &command)
+{
+    if (command.empty())
+        return;
+
+    if (command == PERMAFROST_CMD_PANIC)
+    {
+        PrintMessageToDebugLog("PermafrostIPC", "Executing PANIC command from Permafrost.");
+
+        // Call ResetSynth to send all-notes-off and reset controllers
+        // The FALSE, FALSE params mean: don't clear EVBuffer, don't send SysEx reset
+        ResetSynth(FALSE, FALSE);
+
+// Also acknowledge via AudioBus if it's connected
+#ifdef AUDIOBUS_VERSION
+        if (AudioBus_IsConnected())
+        {
+            AudioBus_AcknowledgePanic();
+        }
+#endif
+
+        PrintMessageToDebugLog("PermafrostIPC", "PANIC command executed.");
+    }
+    else if (command == PERMAFROST_CMD_RESET)
+    {
+        PrintMessageToDebugLog("PermafrostIPC", "Executing RESET command from Permafrost.");
+
+        // Full reset with SysEx
+        ResetSynth(FALSE, TRUE);
+
+        PrintMessageToDebugLog("PermafrostIPC", "RESET command executed.");
+    }
+}
+
+// Poll for mixer commands from Permafrost
+// This should be called periodically from the health/watchdog thread
+static void PollPermafrostMixerCommands()
+{
+    // Method 1: Check registry for commands
+    std::string command = CheckPermafrostMixerCommand();
+    if (!command.empty())
+    {
+        ExecutePermafrostMixerCommand(command);
+    }
+
+// Method 2: Check AudioBus shared memory for panic flag
+#ifdef AUDIOBUS_VERSION
+    if (AudioBus_IsConnected() && AudioBus_CheckPanicRequest())
+    {
+        PrintMessageToDebugLog("PermafrostIPC", "Panic request detected in AudioBus shared memory.");
+        ResetSynth(FALSE, FALSE);
+        AudioBus_AcknowledgePanic();
+    }
+#endif
+}
+
+// Initialize Permafrost mixer integration
+// Creates the registry key and any other resources needed
+static void InitializePermafrostMixer()
+{
+    // Create the mixer registry key if it doesn't exist
+    HKEY hKey = NULL;
+    DWORD disposition = 0;
+
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\OmniMIDI\\Mixer", 0, NULL,
+                        REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, &disposition) == ERROR_SUCCESS)
+    {
+        // Initialize default values
+        DWORD zero = 0;
+        RegSetValueExW(hKey, L"PanicRequest", 0, REG_DWORD, (LPBYTE)&zero, sizeof(DWORD));
+
+        RegCloseKey(hKey);
+
+        if (disposition == REG_CREATED_NEW_KEY)
+        {
+            PrintMessageToDebugLog("PermafrostIPC", "Created Mixer registry key.");
+        }
+    }
+
+    PermafrostMixerEnabled = TRUE;
+    PrintMessageToDebugLog("PermafrostIPC", "Permafrost mixer integration initialized.");
 }
