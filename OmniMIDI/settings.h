@@ -1494,6 +1494,9 @@ void ParseDebugData()
 		{
 			g_LastLatencyQueryTime = currentTime;
 
+			DWORD outputLatencyUs = 0;
+			DWORD asioInputLatencyUs = 0;
+
 			switch (ManagedSettings.CurrentEngine)
 			{
 #if !defined(_M_ARM64)
@@ -1516,6 +1519,10 @@ void ParseDebugData()
 							ManagedDebugInfo.AudioLatency = ((DOUBLE)outLatency * 1000.0 / asioRate);
 							ManagedDebugInfo.AsioInputLatency = ((DOUBLE)inLatency * 1000.0 / asioRate);
 							ManagedDebugInfo.ActualSampleRate = (DWORD)asioRate;
+
+							// Convert to microseconds for AudioBus
+							outputLatencyUs = (DWORD)(ManagedDebugInfo.AudioLatency * 1000.0);
+							asioInputLatencyUs = (DWORD)(ManagedDebugInfo.AsioInputLatency * 1000.0);
 						}
 					}
 				}
@@ -1534,14 +1541,20 @@ void ParseDebugData()
 						ManagedDebugInfo.AudioBufferSize = infoW.buflen / 8;
 						ManagedDebugInfo.AudioLatency = ((DOUBLE)ManagedDebugInfo.AudioBufferSize * 1000.0 / (DOUBLE)infoW.freq);
 						ManagedDebugInfo.ActualSampleRate = infoW.freq;
+
+						outputLatencyUs = (DWORD)(ManagedDebugInfo.AudioLatency * 1000.0);
 					}
 				}
 				break;
 			}
 			// XAudio2 and DirectSound buffer sizes are fixed at init, no live updates needed
 			default:
+				outputLatencyUs = (DWORD)(ManagedDebugInfo.AudioLatency * 1000.0);
 				break;
 			}
+
+			// Update AudioBus with latency info for Permafrost
+			AudioBus_UpdateLatencyInfo(outputLatencyUs, asioInputLatencyUs, ManagedSettings.CurrentEngine);
 		}
 	}
 	else

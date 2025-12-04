@@ -21,7 +21,7 @@ No complex synchronization needed for the metadata stuff.
 // Shared memory names - Permafrost will connect to these
 #define AUDIOBUS_SHARED_MEM_NAME L"OmniMIDI_AudioBus"
 #define AUDIOBUS_MUTEX_NAME L"OmniMIDI_AudioBusMutex"
-#define AUDIOBUS_VERSION 1
+#define AUDIOBUS_VERSION 2 // Bumped for timestamp additions
 
 // Size constants
 #define AUDIOBUS_NUM_CHANNELS 16
@@ -72,8 +72,32 @@ typedef struct AudioBusHeader
     DWORD TotalVoices; // Total active voices across all channels
     float CPUUsage;    // Rendering CPU percentage
 
-    // Reserved for future expansion (audio streaming, etc)
-    BYTE Reserved[32];
+    // ============================================================
+    // LATENCY TIMESTAMPS (QPC = QueryPerformanceCounter, microseconds)
+    // These let Permafrost measure exact latency at each stage
+    // ============================================================
+
+    // QPC frequency (ticks per second) - needed to convert timestamps to time
+    ULONGLONG QPCFrequency;
+
+    // Timestamp when last MIDI event was received (QPC ticks)
+    ULONGLONG LastMidiEventTime;
+
+    // Timestamp when synthesis buffer was filled (QPC ticks)
+    ULONGLONG LastSynthCompleteTime;
+
+    // Timestamp when audio was written to output device (QPC ticks)
+    ULONGLONG LastAudioOutputTime;
+
+    // Pre-calculated latency values in microseconds (for convenience)
+    DWORD OutputBufferLatencyUs; // Output buffer latency in microseconds
+    DWORD AsioInputLatencyUs;    // ASIO input latency (0 for non-ASIO)
+
+    // Current audio engine type (0=WAV, 1=DS, 2=ASIO, 3=WASAPI, 4=XAudio)
+    DWORD CurrentEngine;
+
+    // Reserved for future (SharedMem roundtrip timestamps, VST latency, etc)
+    BYTE Reserved[16];
 
     // Per-channel info (16 channels)
     AudioBusChannelInfo Channels[AUDIOBUS_NUM_CHANNELS];
@@ -98,6 +122,9 @@ static float g_ChannelPeaksR[AUDIOBUS_NUM_CHANNELS] = {0};
 static float g_MasterPeakL = 0.0f;
 static float g_MasterPeakR = 0.0f;
 
+// QPC frequency cache (set once at init)
+static ULONGLONG g_QPCFrequency = 0;
+
 // Forward declarations
 static BOOL AudioBus_Create();
 static void AudioBus_Destroy();
@@ -107,6 +134,12 @@ static void AudioBus_UpdateChannelLevels(int channel, float peakL, float peakR);
 static BOOL AudioBus_CheckPanicRequest();
 static void AudioBus_AcknowledgePanic();
 static BOOL AudioBus_IsConnected();
+
+// Timestamp functions for latency measurement
+static void AudioBus_RecordMidiEvent();
+static void AudioBus_RecordSynthComplete();
+static void AudioBus_RecordAudioOutput();
+static void AudioBus_UpdateLatencyInfo(DWORD outputLatencyUs, DWORD asioInputLatencyUs, DWORD engine);
 
 /*
 Creates the shared memory region.
@@ -175,6 +208,11 @@ static BOOL AudioBus_Create()
         return FALSE;
     }
 
+    // Get QPC frequency for timestamp conversion
+    LARGE_INTEGER freq;
+    QueryPerformanceFrequency(&freq);
+    g_QPCFrequency = freq.QuadPart;
+
     // Initialize the header
     WaitForSingleObject(g_AudioBusMutex, INFINITE);
 
@@ -193,6 +231,15 @@ static BOOL AudioBus_Create()
     g_AudioBusPtr->Flags = AUDIOBUS_FLAG_ACTIVE;
     g_AudioBusPtr->WriteCounter = 0;
     g_AudioBusPtr->Timestamp = GetTickCount64();
+
+    // Initialize timestamp fields
+    g_AudioBusPtr->QPCFrequency = g_QPCFrequency;
+    g_AudioBusPtr->LastMidiEventTime = 0;
+    g_AudioBusPtr->LastSynthCompleteTime = 0;
+    g_AudioBusPtr->LastAudioOutputTime = 0;
+    g_AudioBusPtr->OutputBufferLatencyUs = 0;
+    g_AudioBusPtr->AsioInputLatencyUs = 0;
+    g_AudioBusPtr->CurrentEngine = ManagedSettings.CurrentEngine;
 
     // Initialize channel info
     for (int i = 0; i < AUDIOBUS_NUM_CHANNELS; i++)
@@ -532,4 +579,102 @@ static void AudioBus_SetSampleRate(DWORD sampleRate)
     char buf[64];
     sprintf(buf, "Sample rate updated to %lu Hz", sampleRate);
     PrintMessageToDebugLog("AudioBus", buf);
+}
+
+// ============================================================
+// TIMESTAMP FUNCTIONS FOR LATENCY MEASUREMENT
+// ============================================================
+
+/*
+Gets current QPC timestamp in ticks.
+Helper function for internal use.
+*/
+static inline ULONGLONG AudioBus_GetQPCTicks()
+{
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    return counter.QuadPart;
+}
+
+/*
+Records timestamp when a MIDI event is received.
+Call this from the MIDI input handler.
+*/
+static void AudioBus_RecordMidiEvent()
+{
+    if (!g_AudioBusInitialized || !g_AudioBusPtr)
+    {
+        return;
+    }
+
+    // No mutex - single write, atomic enough for our purposes
+    // We don't want to slow down MIDI event processing
+    g_AudioBusPtr->LastMidiEventTime = AudioBus_GetQPCTicks();
+}
+
+/*
+Records timestamp when synthesis buffer is complete.
+Call this after BASSMIDI fills a buffer.
+*/
+static void AudioBus_RecordSynthComplete()
+{
+    if (!g_AudioBusInitialized || !g_AudioBusPtr)
+    {
+        return;
+    }
+
+    g_AudioBusPtr->LastSynthCompleteTime = AudioBus_GetQPCTicks();
+}
+
+/*
+Records timestamp when audio is sent to output device.
+Call this from the audio output callback/thread.
+*/
+static void AudioBus_RecordAudioOutput()
+{
+    if (!g_AudioBusInitialized || !g_AudioBusPtr)
+    {
+        return;
+    }
+
+    g_AudioBusPtr->LastAudioOutputTime = AudioBus_GetQPCTicks();
+}
+
+/*
+Updates latency info from OmniMIDI's internal tracking.
+Call this periodically (e.g., once per second with the rate limiter).
+
+outputLatencyUs: Output buffer latency in microseconds
+asioInputLatencyUs: ASIO input latency in microseconds (0 for non-ASIO)
+engine: Current engine type (0=WAV, 1=DS, 2=ASIO, 3=WASAPI, 4=XAudio)
+*/
+static void AudioBus_UpdateLatencyInfo(DWORD outputLatencyUs, DWORD asioInputLatencyUs, DWORD engine)
+{
+    if (!g_AudioBusInitialized || !g_AudioBusPtr)
+    {
+        return;
+    }
+
+    if (WaitForSingleObject(g_AudioBusMutex, 0) == WAIT_OBJECT_0)
+    {
+        g_AudioBusPtr->OutputBufferLatencyUs = outputLatencyUs;
+        g_AudioBusPtr->AsioInputLatencyUs = asioInputLatencyUs;
+        g_AudioBusPtr->CurrentEngine = engine;
+        ReleaseMutex(g_AudioBusMutex);
+    }
+}
+
+/*
+Calculates time difference between two QPC timestamps in microseconds.
+Useful for Permafrost to calculate latencies.
+*/
+static inline ULONGLONG AudioBus_QPCDiffToMicroseconds(ULONGLONG start, ULONGLONG end)
+{
+    if (g_QPCFrequency == 0)
+        return 0;
+    if (end < start)
+        return 0; // Handle wrap-around or invalid
+
+    // Convert to microseconds: (diff * 1000000) / frequency
+    return ((end - start) * 1000000ULL) / g_QPCFrequency;
 }
