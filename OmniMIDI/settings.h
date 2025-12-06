@@ -541,6 +541,8 @@ BOOL LoadBASSFunctions()
 			LoadFuncM(BASS, BASS_ChannelIsActive);
 			LoadFuncM(BASS, BASS_ChannelPlay);
 			LoadFuncM(BASS, BASS_ChannelRemoveFX);
+			LoadFuncM(BASS, BASS_ChannelSetDSP);
+			LoadFuncM(BASS, BASS_ChannelRemoveDSP);
 			LoadFuncM(BASS, BASS_ChannelSeconds2Bytes);
 			LoadFuncM(BASS, BASS_ChannelSetAttribute);
 			LoadFuncM(BASS, BASS_ChannelSetDevice);
@@ -1346,8 +1348,7 @@ void CheckVolume(BOOL Closing)
 				RegSetValueEx(MainKey.Address, L"leftvol", 0, REG_DWORD, (LPBYTE)&left, sizeof(left));
 				RegSetValueEx(MainKey.Address, L"rightvol", 0, REG_DWORD, (LPBYTE)&right, sizeof(right));
 
-				// Also update AudioBus shared memory for Permafrost
-				// According to ChatGPT this is the modern way, shared memory is faster than registry
+				// Update AudioBus shared memory too - way faster than registry polling
 				if (AudioBus_IsConnected())
 				{
 					DWORD totalVoices = 0;
@@ -1363,7 +1364,7 @@ void CheckVolume(BOOL Closing)
 			RegSetValueEx(MainKey.Address, L"leftvol", 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
 			RegSetValueEx(MainKey.Address, L"rightvol", 0, REG_DWORD, (LPBYTE)&Blank, sizeof(Blank));
 
-			// Clear AudioBus levels when closing
+			// Zero out AudioBus on close
 			if (AudioBus_IsConnected())
 			{
 				AudioBus_UpdateLevels(0.0f, 0.0f, 0, 0.0f);
@@ -1463,7 +1464,7 @@ void FillContentDebug()
 		StartDebugPipe(TRUE);
 }
 
-// Rate limiter for latency queries - don't hammer ASIO/WASAPI drivers
+// Rate limit latency queries - ASIO/WASAPI drivers can be touchy
 static ULONGLONG g_LastLatencyQueryTime = 0;
 static const ULONGLONG LATENCY_QUERY_INTERVAL_MS = 1000; // Only query once per second
 
@@ -1480,15 +1481,13 @@ void ParseDebugData()
 				ManagedDebugInfo.ActiveVoices[i] = temp;
 		}
 
-		// Update AudioBus with per-channel voice counts
-		// This lets Permafrost show activity per channel without polling registry
+		// Send voice counts to AudioBus - Permafrost can show per-channel activity
 		if (AudioBus_IsConnected())
 		{
 			AudioBus_UpdateAllChannelVoices(ManagedDebugInfo.ActiveVoices);
 		}
 
-		// Live latency updates - rate limited to avoid hammering drivers
-		// Some ASIO drivers get unstable if queried too frequently during buffer changes
+		// Latency updates - rate limited because some ASIO drivers freak out if polled too fast
 		ULONGLONG currentTime = GetTickCount64();
 		if (currentTime - g_LastLatencyQueryTime >= LATENCY_QUERY_INTERVAL_MS)
 		{
@@ -1502,8 +1501,7 @@ void ParseDebugData()
 #if !defined(_M_ARM64)
 			case ASIO_ENGINE:
 			{
-				// ASIO: Query current latency from device
-				// Only query if ASIO is actually started and in a stable state
+				// ASIO: grab latency if it's running
 				if (BASS_ASIO_IsStarted())
 				{
 					DOUBLE asioRate = BASS_ASIO_GetRate();
@@ -1512,7 +1510,7 @@ void ParseDebugData()
 						DWORD outLatency = BASS_ASIO_GetLatency(FALSE);
 						DWORD inLatency = BASS_ASIO_GetLatency(TRUE);
 
-						// Sanity check - ignore garbage values during driver transitions
+						// Ignore garbage values during driver transitions
 						if (outLatency > 0 && outLatency < 100000 && asioRate >= 8000 && asioRate <= 384000)
 						{
 							ManagedDebugInfo.AudioBufferSize = outLatency;
@@ -1531,7 +1529,7 @@ void ParseDebugData()
 #endif
 			case WASAPI_ENGINE:
 			{
-				// WASAPI: Query current buffer info
+				// WASAPI: get buffer info
 				BASS_WASAPI_INFO infoW;
 				if (BASS_WASAPI_GetInfo(&infoW))
 				{
@@ -1547,13 +1545,13 @@ void ParseDebugData()
 				}
 				break;
 			}
-			// XAudio2 and DirectSound buffer sizes are fixed at init, no live updates needed
+			// XAudio2/DirectSound - buffer size is fixed at init
 			default:
 				outputLatencyUs = (DWORD)(ManagedDebugInfo.AudioLatency * 1000.0);
 				break;
 			}
 
-			// Update AudioBus with latency info for Permafrost
+			// Pass latency to AudioBus for Permafrost
 			AudioBus_UpdateLatencyInfo(outputLatencyUs, asioInputLatencyUs, ManagedSettings.CurrentEngine);
 		}
 	}
@@ -1566,8 +1564,7 @@ void ParseDebugData()
 			ManagedDebugInfo.ActiveVoices[i] = 0;
 	}
 
-	// Check for mixer commands from Permafrost
-	// This polls the registry and shared memory for panic/reset requests
+	// Check for Permafrost mixer commands (panic, etc)
 	PollPermafrostMixerCommands();
 }
 

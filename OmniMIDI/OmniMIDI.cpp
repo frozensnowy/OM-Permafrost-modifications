@@ -350,12 +350,15 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 	// Return value
 	MMRESULT RetVal = MMSYSERR_NOERROR;
 
-	/*
-	char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
-	sprintf(Msg, "Received modMessage(%u, %u, %X, %X, %X)", uDeviceID, uMsg, dwUser, dwParam1, dwParam2);
-	PrintMessageToDebugLog("MOD_MESSAGE", Msg);
-	free(Msg);
-	*/
+	// Debug: always log modMessage calls to help trace crashes
+	char *DbgMsg = (char *)malloc(sizeof(char) * 512);
+	if (DbgMsg)
+	{
+		sprintf(DbgMsg, "modMessage(devID=%u, msg=0x%X, dwUser=0x%llX, dwParam1=0x%llX, dwParam2=0x%llX)",
+				uDeviceID, uMsg, (unsigned long long)dwUser, (unsigned long long)dwParam1, (unsigned long long)dwParam2);
+		OutputDebugStringA(DbgMsg);
+		free(DbgMsg);
+	}
 
 	switch (uMsg)
 	{
@@ -364,6 +367,9 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		_PrsData(dwParam1);
 		return MMSYSERR_NOERROR;
 	case MODM_LONGDATA:
+		// Safety check: dwParam1 must be a valid MIDIHDR pointer
+		if (dwParam1 < 0x100000)
+			return MMSYSERR_INVALPARAM;
 		_FeedbackLongMsg((MIDIHDR *)dwParam1, dwParam2);
 
 		// Pass it to a KDMAPI function
@@ -376,6 +382,9 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		return RetVal;
 	case MODM_STRMDATA:
 	{
+		// Safety check: dwParam1 must be a valid MIDIHDR pointer
+		if (dwParam1 < 0x100000)
+			return MMSYSERR_INVALPARAM;
 		MIDIHDR *MIDIHeader = (MIDIHDR *)dwParam1;
 		DWORD HeaderLength = (DWORD)dwParam2;
 
@@ -591,6 +600,9 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		return (OMCookedMode ? DequeueMIDIHDRs() : MMSYSERR_NOERROR);
 	case MODM_PREPARE:
 	{
+		// Safety check: dwParam1 must be a valid MIDIHDR pointer
+		if (dwParam1 < 0x100000)
+			return MMSYSERR_INVALPARAM;
 		MIDIHDR *MIDIHeader = (MIDIHDR *)dwParam1;
 
 		// Pass it to a KDMAPI function
@@ -598,6 +610,9 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 	}
 	case MODM_UNPREPARE:
 	{
+		// Safety check: dwParam1 must be a valid MIDIHDR pointer
+		if (dwParam1 < 0x100000)
+			return MMSYSERR_INVALPARAM;
 		MIDIHDR *MIDIHeader = (MIDIHDR *)dwParam1;
 
 		// Pass it to a KDMAPI function
@@ -607,10 +622,16 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		// Return "1" if the process isn't blacklisted, otherwise the driver doesn't exist OwO
 		return BlackListSystem();
 	case MODM_GETDEVCAPS:
+		// Safety check: dwParam1 must be a valid pointer
+		if (dwParam1 < 0x100000)
+			return MMSYSERR_INVALPARAM;
 		// Return OM's caps to the app
 		return GiveOmniMIDICaps((PVOID)dwParam1, (DWORD)dwParam2);
 	case MODM_GETVOLUME:
 	{
+		// Safety check: dwParam1 must be a valid pointer
+		if (dwParam1 < 0x100000)
+			return MMSYSERR_INVALPARAM;
 		// Tell the app the current output volume of the driver
 		PrintMessageToDebugLog("MODM_GETVOLUME", "The app wants to know the current output volume of the driver.");
 		*(LONG *)dwParam1 = (LONG)(SynthVolume * 0xFFFF);
@@ -633,6 +654,18 @@ extern "C" MMRESULT WINAPI modMessage(UINT uDeviceID, UINT uMsg, DWORD_PTR dwUse
 		}
 
 		PrintMessageToDebugLog("MODM_OPEN", "The app requested the driver to initialize its audio stream.");
+
+		// Safety check: dwParam1 must be a valid pointer to MIDIOPENDESC, not a handle value
+		// If dwParam1 looks like a small number (potential handle), reject it
+		// Use 0x100000 as threshold - any valid heap pointer should be much higher
+		if (dwParam1 < 0x100000)
+		{
+			char dbgMsg[256];
+			sprintf(dbgMsg, "Invalid dwParam1 (0x%llX) - rejecting as likely handle value", (unsigned long long)dwParam1);
+			PrintMessageToDebugLog("MODM_OPEN", dbgMsg);
+			return AlreadyInitializedViaKDMAPI ? MMSYSERR_ALLOCATED : MMSYSERR_INVALPARAM;
+		}
+
 		if (!AlreadyInitializedViaKDMAPI && !bass_initialized)
 		{
 			// Prevent the app from calling MODM_OPEN again...
@@ -921,6 +954,9 @@ MMRESULT WINAPI KDMAPI_midiStreamOpen(LPHMIDISTRM lphStream, LPUINT puDeviceID, 
 
 	if (!AlreadyInitializedViaKDMAPI)
 	{
+		// Initialize a dummy out device FIRST (before using in callback)
+		*lphStream = (HMIDISTRM)OMDummy;
+
 		// Setup the Callback
 		if (!InitializeCallbackFeatures((HMIDI)(*lphStream), dwCallback, dwCallbackInstance, OMUser, fdwOpen | 0x00000002L))
 		{
@@ -930,9 +966,6 @@ MMRESULT WINAPI KDMAPI_midiStreamOpen(LPHMIDISTRM lphStream, LPUINT puDeviceID, 
 
 		// Close any stream, just to be safe
 		TerminateKDMAPIStream();
-
-		// Initialize a dummy out device
-		*lphStream = (HMIDISTRM)OMDummy;
 
 		// Initialize MIDI out
 		if (!InitializeKDMAPIStream())

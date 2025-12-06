@@ -5,25 +5,33 @@ Thank you Kode54 for allowing me to fork your awesome driver.
 */
 #pragma once
 
-#define DriverSettingsCase(Setting, Mode, Type, SettingStruct, Value, cbValue) \
-	case Setting: \
-		if (!SettingsManagedByClient) PrintMessageToDebugLog(#Setting, "Please send OM_MANAGE first!!!"); return FALSE; \
-		if (cbValue != sizeof(Type)) return FALSE; \
-		if (Mode = OM_SET) SettingStruct = *(Type*)Value; \
-		else if (Mode = OM_GET) *(Type*)Value = SettingStruct; \
-		else return FALSE; \
+#define DriverSettingsCase(Setting, Mode, Type, SettingStruct, Value, cbValue)  \
+	case Setting:                                                               \
+		if (!SettingsManagedByClient)                                           \
+			PrintMessageToDebugLog(#Setting, "Please send OM_MANAGE first!!!"); \
+		return FALSE;                                                           \
+		if (cbValue != sizeof(Type))                                            \
+			return FALSE;                                                       \
+		if (Mode = OM_SET)                                                      \
+			SettingStruct = *(Type *)Value;                                     \
+		else if (Mode = OM_GET)                                                 \
+			*(Type *)Value = SettingStruct;                                     \
+		else                                                                    \
+			return FALSE;                                                       \
 		break;
 
 // F**k WinMM and Microsoft
-typedef VOID(CALLBACK* WMMC)(HMIDIOUT, DWORD, DWORD_PTR, DWORD_PTR, DWORD_PTR);
+typedef VOID(CALLBACK *WMMC)(HMIDIOUT, DWORD, DWORD_PTR, DWORD_PTR, DWORD_PTR);
 DWORD OMCallbackMode = CALLBACK_NULL | MIDI_IO_PACKED;
 BOOL OMCookedMode = FALSE;
 
 // For callbacks
-void DoCallback(DWORD M, DWORD_PTR P1, DWORD_PTR P2) {
+void DoCallback(DWORD M, DWORD_PTR P1, DWORD_PTR P2)
+{
 	BOOL R = FALSE;
 
-	switch (OMCallbackMode & CALLBACK_TYPEMASK) {
+	switch (OMCallbackMode & CALLBACK_TYPEMASK)
+	{
 	case CALLBACK_FUNCTION:
 	{
 		(*(WMMC)OMCallback)((HMIDIOUT)OMHMIDI, M, OMInstance, P1, P2);
@@ -55,10 +63,13 @@ void DoCallback(DWORD M, DWORD_PTR P1, DWORD_PTR P2) {
 }
 
 // CookedPlayer system
-VOID KillOldCookedPlayer() {
-	if (IsThisThreadActive(CookedThread.ThreadHandle)) {
+VOID KillOldCookedPlayer()
+{
+	if (IsThisThreadActive(CookedThread.ThreadHandle))
+	{
 		CookedPlayerHasToGo = TRUE;
-		if (WaitForSingleObject(CookedThread.ThreadHandle, INFINITE) == WAIT_OBJECT_0) {
+		if (WaitForSingleObject(CookedThread.ThreadHandle, INFINITE) == WAIT_OBJECT_0)
+		{
 			CloseHandle(CookedThread.ThreadHandle);
 			CookedThread.ThreadHandle = nullptr;
 			delete OMCookedPlayer;
@@ -68,7 +79,7 @@ VOID KillOldCookedPlayer() {
 }
 
 // Code by SonoSooS
-void CookedPlayerSystem(CookedPlayer* Player)
+void CookedPlayerSystem(CookedPlayer *Player)
 {
 	QWORD ticker = 0;
 	QWORD tickdiff = 0;
@@ -77,10 +88,10 @@ void CookedPlayerSystem(CookedPlayer* Player)
 	int deltasleep = 0;
 
 	DWORD delaytick = 0;
-	BOOL barrier = TRUE;			// This is horrible :s
+	BOOL barrier = TRUE; // This is horrible :s
 
-	constexpr DWORD maxdelay = 100000;	// Adjust responsiveness here
-	constexpr DWORD adaption = 100000;	// Adaptive timer nice time >:3
+	constexpr DWORD maxdelay = 100000; // Adjust responsiveness here
+	constexpr DWORD adaption = 100000; // Adaptive timer nice time >:3
 
 	PrintMessageToDebugLog("CookedPlayerSystem", "Thread is alive!");
 
@@ -93,12 +104,13 @@ void CookedPlayerSystem(CookedPlayer* Player)
 			PrintMessageToDebugLog("CookedPlayerSystem", "Waiting for unpause and/or header...");
 			while (Player->Paused || !Player->MIDIHeaderQueue)
 			{
-				ticker = (QWORD)-(INT64)maxdelay;
-				NtDelayExecution(TRUE, (INT64*)&ticker);
-				NtQuerySystemTime(&tickdiff);				// Reset timer
-				deltasleep = 0;								// Reset drift
+				ticker = (QWORD) - (INT64)maxdelay;
+				NtDelayExecution(TRUE, (INT64 *)&ticker);
+				NtQuerySystemTime(&tickdiff); // Reset timer
+				deltasleep = 0;				  // Reset drift
 				oldsleep = 0;
-				if (CookedPlayerHasToGo) break;
+				if (CookedPlayerHasToGo)
+					break;
 			}
 			PrintMessageToDebugLog("CookedPlayerThread", "Playback started!");
 			continue;
@@ -107,30 +119,33 @@ void CookedPlayerSystem(CookedPlayer* Player)
 		if (delaytick)
 		{
 			NtQuerySystemTime(&ticker);
-			DWORD tdiff = (DWORD)(ticker - tickdiff);		// Calculate elapsed time
+			DWORD tdiff = (DWORD)(ticker - tickdiff); // Calculate elapsed time
 			tickdiff = ticker;
-			int delt = (int)(tdiff - oldsleep);				// Calculate drift
-			deltasleep += delt;								// Accumlate drift
+			int delt = (int)(tdiff - oldsleep); // Calculate drift
+			deltasleep += delt;					// Accumlate drift
 
-			sleeptime = (delaytick * Player->TempoMulti);	// TODO: can overflow
-			//sleeptime *= speedcontrol;
+			sleeptime = (delaytick * Player->TempoMulti); // TODO: can overflow
+			// sleeptime *= speedcontrol;
 			oldsleep = sleeptime;
 
 			Player->TimeAccumulator += sleeptime;
 
-			if (deltasleep > 0)								// Can underflow, don't speed up if we pushed too hard
-				sleeptime -= deltasleep;					// Adjust for time drift
+			if (deltasleep > 0)			 // Can underflow, don't speed up if we pushed too hard
+				sleeptime -= deltasleep; // Adjust for time drift
 
-			if (0) //if(sleeptime > maxdelay)
-			{ // Yes, this is very coarse, but the adaptive timer will keep it in sync
+			if (0) // if(sleeptime > maxdelay)
+			{	   // Yes, this is very coarse, but the adaptive timer will keep it in sync
 				sleeptime = maxdelay;
-				DWORD acc = maxdelay / Player->TempoMulti;	// Time to ticks
-				if (!acc) acc = 1;
+				DWORD acc = maxdelay / Player->TempoMulti; // Time to ticks
+				if (!acc)
+					acc = 1;
 
-				if (sleeptime <= 0)							// Overloaded
+				if (sleeptime <= 0) // Overloaded
 				{
-					if (deltasleep < adaption);
-					else deltasleep = adaption;				// Don't overpush
+					if (deltasleep < adaption)
+						;
+					else
+						deltasleep = adaption; // Don't overpush
 				}
 				else
 				{
@@ -147,10 +162,12 @@ void CookedPlayerSystem(CookedPlayer* Player)
 			}
 			else
 			{
-				if (sleeptime <= 0)							// Overloaded
+				if (sleeptime <= 0) // Overloaded
 				{
-					if (deltasleep < adaption);
-					else deltasleep = adaption;				// Don't overpush
+					if (deltasleep < adaption)
+						;
+					else
+						deltasleep = adaption; // Don't overpush
 				}
 				else
 				{
@@ -195,14 +212,15 @@ void CookedPlayerSystem(CookedPlayer* Player)
 				break;
 			}
 
-			MIDIEVENT* evt = (MIDIEVENT*)(hdr->lpData + hdr->dwOffset);
+			MIDIEVENT *evt = (MIDIEVENT *)(hdr->lpData + hdr->dwOffset);
 
 			if (barrier)
 			{
 				barrier = FALSE;
 				delaytick = evt->dwDeltaTime;
 
-				if (delaytick) break;
+				if (delaytick)
+					break;
 			}
 
 			// Reset barrier
@@ -223,7 +241,8 @@ void CookedPlayerSystem(CookedPlayer* Player)
 			}
 			*/
 
-			switch (evid) {
+			switch (evid)
+			{
 			case MEVT_SHORTMSG:
 				_PrsData(evt->dwEvent);
 				break;
@@ -240,7 +259,7 @@ void CookedPlayerSystem(CookedPlayer* Player)
 
 			if (evt->dwEvent & MEVT_F_LONG)
 			{
-				DWORD acc = ((evt->dwEvent & 0xFFFFFF) + 3) & ~3;	// PAD
+				DWORD acc = ((evt->dwEvent & 0xFFFFFF) + 3) & ~3; // PAD
 				Player->ByteAccumulator += acc;
 				hdr->dwOffset += acc;
 			}
@@ -255,7 +274,8 @@ void CookedPlayerSystem(CookedPlayer* Player)
 	TerminateThread(&CookedThread, TRUE, 0);
 }
 
-BOOL PrepareDriver() {
+BOOL PrepareDriver()
+{
 	PrintMessageToDebugLog("StartDriver", "Initializing driver...");
 
 	// Load the settings, and allocate the memory for the EVBuffer
@@ -277,11 +297,13 @@ BOOL PrepareDriver() {
 }
 
 // KDMAPI calls
-BOOL StreamHealthCheck() {
+BOOL StreamHealthCheck()
+{
 	BOOL LiveChangesB = FALSE;
 
 	// If BASS is forbidden from initializing itself, then abort immediately
-	if (block_bassinit || stop_svthread) return FALSE;
+	if (block_bassinit || stop_svthread)
+		return FALSE;
 
 	if (WaitForSingleObject(LiveChanges, 50) == WAIT_OBJECT_0)
 	{
@@ -290,7 +312,8 @@ BOOL StreamHealthCheck() {
 	}
 
 	// Check if the call failed
-	if ((BASS_ChannelIsActive(OMStream) == BASS_ACTIVE_STOPPED || LiveChangesB)) {
+	if ((BASS_ChannelIsActive(OMStream) == BASS_ACTIVE_STOPPED || LiveChangesB))
+	{
 		PrintMessageToDebugLog("StreamWatchdog", "Stream is down! Restarting audio stream...");
 
 		// Restart feedback mode just in case
@@ -303,14 +326,16 @@ BOOL StreamHealthCheck() {
 		LoadSettings(TRUE, FALSE);
 
 		// Initialize the BASS output device, and set up the streams
-		if (InitializeBASS(TRUE)) {
+		if (InitializeBASS(TRUE))
+		{
 			SetUpStream();
 			LoadSoundFontsToStream();
 
 			// Done, now initialize the threads
 			CreateThreads();
 		}
-		else PrintMessageToDebugLog("StreamWatchdog", "Failed to initialize stream! Retrying...");
+		else
+			PrintMessageToDebugLog("StreamWatchdog", "Failed to initialize stream! Retrying...");
 
 		return FALSE;
 	}
@@ -321,8 +346,10 @@ BOOL StreamHealthCheck() {
 			(ManagedSettings.CurrentEngine == ASIO_ENGINE && !ManagedSettings.ASIODirectFeed))
 			return TRUE;
 
-		if (stop_thread) PrintMessageToDebugLog("StreamWatchdog", "Restarting threads...");
-		else PrintMessageToDebugLog("StreamWatchdog", "The audio thread is down! Recovering...");
+		if (stop_thread)
+			PrintMessageToDebugLog("StreamWatchdog", "Restarting threads...");
+		else
+			PrintMessageToDebugLog("StreamWatchdog", "The audio thread is down! Recovering...");
 
 		CreateThreads();
 	}
@@ -330,12 +357,15 @@ BOOL StreamHealthCheck() {
 	return TRUE;
 }
 
-void Supervisor(LPVOID lpV) {
+void Supervisor(LPVOID lpV)
+{
 	// Load the BASS functions
-	try {
-		if (LoadBASSFunctions()) {
+	try
+	{
+		if (LoadBASSFunctions())
+		{
 			// Parse the app name, and start the debug pipe to the debug window
-			if (!AlreadyStartedOnce) 
+			if (!AlreadyStartedOnce)
 				StartDebugPipe(FALSE);
 
 			if (!ATThreadDone)
@@ -363,9 +393,11 @@ void Supervisor(LPVOID lpV) {
 			// Check system
 			PrintMessageToDebugLog("StreamWatchdog", "Checking for settings changes or hotkeys...");
 
-			while (!stop_svthread) {
+			while (!stop_svthread)
+			{
 				// Check if the threads and streams are still alive
-				if (StreamHealthCheck());
+				if (StreamHealthCheck())
+					;
 				{
 					// It's alive, do registry stuff
 
@@ -439,7 +471,8 @@ void Supervisor(LPVOID lpV) {
 			ResetTimings();
 		}
 	}
-	catch (...) {
+	catch (...)
+	{
 		_THROWCRASH;
 	}
 
@@ -450,8 +483,10 @@ void Supervisor(LPVOID lpV) {
 	TerminateThread(&HealthThread, TRUE, 0);
 }
 
-BOOL DoStartClient() {
-	if (!DriverInitStatus && !block_bassinit) {
+BOOL DoStartClient()
+{
+	if (!DriverInitStatus && !block_bassinit)
+	{
 		// Create an event, to wait for the driver to be ready
 		PrintMessageToDebugLog("StartDriver", "Creating handles...");
 		if (!OMReady)
@@ -483,8 +518,9 @@ BOOL DoStartClient() {
 	return FALSE;
 }
 
-BOOL DoStopClient() {
-	if (DriverInitStatus) 
+BOOL DoStopClient()
+{
+	if (DriverInitStatus)
 	{
 		PrintMessageToDebugLog("StopDriver", "Terminating driver...");
 
@@ -502,36 +538,43 @@ BOOL DoStopClient() {
 		{
 			CloseHandle(OMReady);
 			OMReady = NULL;
-		}		
+		}
 
 		// Boopers
 		DriverInitStatus = FALSE;
 		PrintMessageToDebugLog("StopDriver", "Driver terminated.");
 	}
-	else PrintMessageToDebugLog("StopDriver", "The driver is not initialized.");
+	else
+		PrintMessageToDebugLog("StopDriver", "The driver is not initialized.");
 
 	return TRUE;
 }
 
-extern "C" BOOL KDMAPI ReturnKDMAPIVer(LPDWORD Major, LPDWORD Minor, LPDWORD Build, LPDWORD Revision) {
-	if (Major == NULL || Minor == NULL || Build == NULL || Revision == NULL) {
+extern "C" BOOL KDMAPI ReturnKDMAPIVer(LPDWORD Major, LPDWORD Minor, LPDWORD Build, LPDWORD Revision)
+{
+	if (Major == NULL || Minor == NULL || Build == NULL || Revision == NULL)
+	{
 		PrintMessageToDebugLog("KDMAPI_RKV", "One of the pointers passed to the RKV function is invalid.");
 		MessageBox(NULL, L"One of the pointers passed to the ReturnKDMAPIVer function is invalid!", L"KDMAPI ERROR", MB_OK | MB_ICONHAND | MB_SYSTEMMODAL);
 		return FALSE;
 	}
 
 	PrintMessageToDebugLog("KDMAPI_RKV", "The app wants to know what version of KDMAPI is currently available.");
-	*Major = CUR_MAJOR; *Minor = CUR_MINOR; *Build = CUR_BUILD; *Revision = CUR_REV;
+	*Major = CUR_MAJOR;
+	*Minor = CUR_MINOR;
+	*Build = CUR_BUILD;
+	*Revision = CUR_REV;
 	PrintMessageToDebugLog("KDMAPI_RKV", "Now they know.");
 	return TRUE;
 }
 
-extern "C" BOOL KDMAPI IsKDMAPIAvailable() {
+extern "C" BOOL KDMAPI IsKDMAPIAvailable()
+{
 	// Parse the current state of the KDMAPI
 	OpenRegistryKey(Configuration, L"Software\\OmniMIDI\\Configuration", TRUE);
 
 	PrintMessageToDebugLog("KDMAPI_IKA", "Interrogating registry about KDMAPI status...");
-	long lResult = RegQueryValueEx(Configuration.Address, L"KDMAPIEnabled", NULL, &dwType, (LPBYTE)& KDMAPIEnabled, &dwSize);
+	long lResult = RegQueryValueEx(Configuration.Address, L"KDMAPIEnabled", NULL, &dwType, (LPBYTE)&KDMAPIEnabled, &dwSize);
 	PrintMessageToDebugLog("KDMAPI_IKA", "Done!");
 
 	// If the state is not available or it hasn't been set, keep it enabled by default
@@ -542,12 +585,15 @@ extern "C" BOOL KDMAPI IsKDMAPIAvailable() {
 	return KDMAPIEnabled;
 }
 
-extern "C" BOOL KDMAPI InitializeKDMAPIStream() {
-	if (!AlreadyInitializedViaKDMAPI && !bass_initialized) {
+extern "C" BOOL KDMAPI InitializeKDMAPIStream()
+{
+	if (!AlreadyInitializedViaKDMAPI && !bass_initialized)
+	{
 		// Enable the debug log
 		OpenRegistryKey(Configuration, L"Software\\OmniMIDI\\Configuration", FALSE);
 		RegQueryValueEx(Configuration.Address, L"DebugMode", NULL, &dwType, (LPBYTE)&ManagedSettings.DebugMode, &dwSize);
-		if (ManagedSettings.DebugMode) CreateConsole();
+		if (ManagedSettings.DebugMode)
+			CreateConsole();
 
 		PrintMessageToDebugLog("KDMAPI_IKS", "The app requested the driver to initialize its audio stream.");
 
@@ -557,7 +603,8 @@ extern "C" BOOL KDMAPI InitializeKDMAPIStream() {
 		EnableBuiltInHandler("KDMAPI_IKS");
 
 		// Start the driver's engine
-		if (!DoStartClient()) {
+		if (!DoStartClient())
+		{
 			PrintMessageToDebugLog("KDMAPI_IKS", "KDMAPI failed to initialize.");
 			return FALSE;
 		}
@@ -570,11 +617,13 @@ extern "C" BOOL KDMAPI InitializeKDMAPIStream() {
 	return FALSE;
 }
 
-extern "C" BOOL KDMAPI TerminateKDMAPIStream() {
+extern "C" BOOL KDMAPI TerminateKDMAPIStream()
+{
 	BOOL ret = FALSE;
 
 	// If the driver is already initialized, close it
-	if (AlreadyInitializedViaKDMAPI && bass_initialized) {
+	if (AlreadyInitializedViaKDMAPI && bass_initialized)
+	{
 		// Prevent BASS from reinitializing itself
 		block_bassinit = TRUE;
 
@@ -590,7 +639,8 @@ extern "C" BOOL KDMAPI TerminateKDMAPIStream() {
 
 		ret = TRUE;
 	}
-	else {
+	else
+	{
 		if (!AlreadyInitializedViaKDMAPI && bass_initialized)
 			PrintMessageToDebugLog("KDMAPI_TKS", "You cannot call TerminateKDMAPIStream if OmniMIDI has been initialized through WinMM.");
 		else
@@ -603,7 +653,8 @@ extern "C" BOOL KDMAPI TerminateKDMAPIStream() {
 	return ret;
 }
 
-extern "C" BOOL KDMAPI InitializeCallbackFeatures(HMIDI OMHM, DWORD_PTR OMCB, DWORD_PTR OMI, DWORD_PTR OMU, DWORD OMCM) {
+extern "C" BOOL KDMAPI InitializeCallbackFeatures(HMIDI OMHM, DWORD_PTR OMCB, DWORD_PTR OMI, DWORD_PTR OMU, DWORD OMCM)
+{
 	// Copy values to memory
 	const BOOL NV = ((OMCM != NULL) && (!OMCB && !OMI));
 
@@ -612,7 +663,7 @@ extern "C" BOOL KDMAPI InitializeCallbackFeatures(HMIDI OMHM, DWORD_PTR OMCB, DW
 	OMInstance = NV ? NULL : OMI;
 	OMCallbackMode = NV ? NULL : OMCM;
 
-	if ((OMCM & CALLBACK_TYPEMASK) == CALLBACK_WINDOW) 
+	if ((OMCM & CALLBACK_TYPEMASK) == CALLBACK_WINDOW)
 	{
 		if (OMCallback && !IsWindow((HWND)OMCallback))
 		{
@@ -621,16 +672,19 @@ extern "C" BOOL KDMAPI InitializeCallbackFeatures(HMIDI OMHM, DWORD_PTR OMCB, DW
 		}
 	}
 
-	if (NV) PrintMessageToDebugLog("ICF", "The application requested the driver to use callbacks, but no callback address has been given.");
+	if (NV)
+		PrintMessageToDebugLog("ICF", "The application requested the driver to use callbacks, but no callback address has been given.");
 
-	if ((OMCallbackMode & MIDI_IO_COOKED)) {
+	if ((OMCallbackMode & MIDI_IO_COOKED))
+	{
 		PrintMessageToDebugLog("ICF", "MIDI_IO_COOKED requested.");
 
 		// Prepare registry for CookedPlayer
 		OpenRegistryKey(Configuration, L"Software\\OmniMIDI\\Configuration", FALSE);
 		RegQueryValueEx(Configuration.Address, L"DisableCookedPlayer", NULL, &dwType, (LPBYTE)&ManagedSettings.DisableCookedPlayer, &dwSize);
 
-		if (ManagedSettings.DisableCookedPlayer) {
+		if (ManagedSettings.DisableCookedPlayer)
+		{
 			PrintMessageToDebugLog("ICF", "CookedPlayer has been disabled in the configurator.");
 			return TRUE;
 		}
@@ -645,7 +699,7 @@ extern "C" BOOL KDMAPI InitializeCallbackFeatures(HMIDI OMHM, DWORD_PTR OMCB, DW
 			OMCookedPlayer->Tempo = 500000;
 			OMCookedPlayer->TimeDiv = 384;
 			OMCookedPlayer->TempoMulti = ((OMCookedPlayer->Tempo * 10) / OMCookedPlayer->TimeDiv);
-			PrintVarToDebugLog("ICF", "TempoMulti", (void*)OMCookedPlayer->TempoMulti, PRINT_UINT32);
+			PrintVarToDebugLog("ICF", "TempoMulti", (void *)OMCookedPlayer->TempoMulti, PRINT_UINT32);
 
 			PrintMessageToDebugLog("ICF", "CookedPlayer struct prepared.");
 
@@ -662,55 +716,63 @@ extern "C" BOOL KDMAPI InitializeCallbackFeatures(HMIDI OMHM, DWORD_PTR OMCB, DW
 
 		PrintMessageToDebugLog("ICF", "An error has occured while preparing CookedPlayer.");
 		return FALSE;
-	}		
+	}
 
 	return TRUE;
 }
 
-extern "C" VOID KDMAPI RunCallbackFunction(DWORD Msg, DWORD_PTR P1, DWORD_PTR P2) {
+extern "C" VOID KDMAPI RunCallbackFunction(DWORD Msg, DWORD_PTR P1, DWORD_PTR P2)
+{
 	DoCallback(Msg, P1, P2);
 }
 
-extern "C" VOID KDMAPI NoFeedbackMode() {
+extern "C" VOID KDMAPI NoFeedbackMode()
+{
 	FeedbackBlacklisted = TRUE;
 }
 
-extern "C" VOID KDMAPI ResetKDMAPIStream() {
+extern "C" VOID KDMAPI ResetKDMAPIStream()
+{
 	// Redundant
 	if (bass_initialized)
 		ResetSynth(FALSE, TRUE);
 }
 
-extern "C" BOOL KDMAPI SendCustomEvent(DWORD eventtype, DWORD chan, DWORD param) noexcept {
+extern "C" BOOL KDMAPI SendCustomEvent(DWORD eventtype, DWORD chan, DWORD param) noexcept
+{
 	return _BMSE(OMStream, chan, eventtype, param);
 }
 
-extern "C" VOID KDMAPI SendDirectData(DWORD dwMsg) noexcept {
+extern "C" VOID KDMAPI SendDirectData(DWORD dwMsg) noexcept
+{
 	// Send it to the pointed ParseData function (Either ParseData or ParseDataHyper)
 	_PrsData(dwMsg);
 }
 
-extern "C" VOID KDMAPI SendDirectDataNoBuf(DWORD dwMsg) noexcept {
+extern "C" VOID KDMAPI SendDirectDataNoBuf(DWORD dwMsg) noexcept
+{
 	// Send the data directly to BASSMIDI, bypassing the buffer altogether
 	_PforBASSMIDI(dwMsg);
 }
 
-extern "C" MMRESULT KDMAPI PrepareLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHdrSize) {
+extern "C" MMRESULT KDMAPI PrepareLongData(MIDIHDR *IIMidiHdr, UINT IIMidiHdrSize)
+{
 	// Check if the MIDIHDR buffer is valid before doing
 	// anything, to avoid EXCEPTION_ACCESS_VIOLATION crashes
-	if (!IIMidiHdr)														// Buffer doesn't exist
-		return DebugResult("UnprepareLongData", MMSYSERR_INVALPARAM, "The buffer doesn't exist, or hasn't been allocated.");
+	// Also reject small pointer values that might be handles (like 0x10001)
+	if (!IIMidiHdr || (DWORD_PTR)IIMidiHdr < 0x100000) // Buffer doesn't exist or is invalid handle
+		return DebugResult("PrepareLongData", MMSYSERR_INVALPARAM, "The buffer doesn't exist, or hasn't been allocated.");
 
-	if (IIMidiHdrSize != sizeof(MIDIHDR))								// The struct size is not correct
+	if (IIMidiHdrSize != sizeof(MIDIHDR)) // The struct size is not correct
 		return DebugResult("PrepareLongData", MMSYSERR_INVALPARAM, "The MIDIHDR struct size is not correct.");
 
-	if (IIMidiHdr->dwBufferLength > LONGMSG_MAXSIZE)					// Buffer is bigger than 64K
+	if (IIMidiHdr->dwBufferLength > LONGMSG_MAXSIZE) // Buffer is bigger than 64K
 		return DebugResult("PrepareLongData", MMSYSERR_INVALPARAM, "The given stream buffer is greater than 64K.");
 
-	if (IIMidiHdr->dwBufferLength < 1)									// Buffer has a size of zero?
+	if (IIMidiHdr->dwBufferLength < 1) // Buffer has a size of zero?
 		return DebugResult("PrepareLongData", MMSYSERR_INVALPARAM, "Invalid buffer size passed to dwBytesRecorded.");
 
-	if (IIMidiHdr->dwFlags & MHDR_PREPARED)								// Already prepared, everything is fine
+	if (IIMidiHdr->dwFlags & MHDR_PREPARED) // Already prepared, everything is fine
 		return DebugResult("PrepareLongData", MMSYSERR_NOERROR, "The buffer is already prepared.");
 
 	// Lock the struct
@@ -720,7 +782,8 @@ extern "C" MMRESULT KDMAPI PrepareLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHdrSi
 		return DebugResult("PrepareLongData", MMSYSERR_NOMEM, "VirtualLock failed to lock the struct to the virtual address space. Not enough memory available.");
 	}
 	// Locked successfully
-	else PrintMessageToDebugLog("PrepareLongData", "Buffer locked to virtual address space.");
+	else
+		PrintMessageToDebugLog("PrepareLongData", "Buffer locked to virtual address space.");
 
 	// Lock the buffer
 	if (!VirtualLock(IIMidiHdr->lpData, IIMidiHdr->dwBufferLength))
@@ -730,7 +793,8 @@ extern "C" MMRESULT KDMAPI PrepareLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHdrSi
 		return DebugResult("PrepareLongData", MMSYSERR_NOMEM, "VirtualLock failed to lock the buffer to the virtual address space. Not enough memory available.");
 	}
 	// Locked successfully
-	else PrintMessageToDebugLog("PrepareLongData", "Buffer locked to virtual address space.");
+	else
+		PrintMessageToDebugLog("PrepareLongData", "Buffer locked to virtual address space.");
 
 	PrintVarToDebugLog("PrepareLongData", "IIMidiHdr Address", &IIMidiHdr, PRINT_UINT64);
 
@@ -742,22 +806,24 @@ extern "C" MMRESULT KDMAPI PrepareLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHdrSi
 	return MMSYSERR_NOERROR;
 }
 
-extern "C" MMRESULT KDMAPI UnprepareLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHdrSize) {
+extern "C" MMRESULT KDMAPI UnprepareLongData(MIDIHDR *IIMidiHdr, UINT IIMidiHdrSize)
+{
 	// Check if the MIDIHDR buffer is valid before doing
 	// anything, to avoid EXCEPTION_ACCESS_VIOLATION crashes
-	if (!IIMidiHdr)													// Buffer doesn't exist
+	// Also reject small pointer values that might be handles (like 0x10001)
+	if (!IIMidiHdr || (DWORD_PTR)IIMidiHdr < 0x100000) // Buffer doesn't exist or is invalid handle
 		return DebugResult("UnprepareLongData", MMSYSERR_INVALPARAM, "The buffer doesn't exist, or hasn't been allocated.");
 
-	if (IIMidiHdrSize != sizeof(MIDIHDR))								// The struct size is not correct
+	if (IIMidiHdrSize != sizeof(MIDIHDR)) // The struct size is not correct
 		return DebugResult("PrepareLongData", MMSYSERR_INVALPARAM, "The MIDIHDR struct size is not correct.");
 
-	if (IIMidiHdr->dwBufferLength > LONGMSG_MAXSIZE)				// Buffer is bigger than 64K
+	if (IIMidiHdr->dwBufferLength > LONGMSG_MAXSIZE) // Buffer is bigger than 64K
 		return DebugResult("UnprepareLongData", MMSYSERR_INVALPARAM, "The given stream buffer is greater than 64K.");
 
-	if (IIMidiHdr->dwBufferLength < 1)								// Buffer has a size of zero?
+	if (IIMidiHdr->dwBufferLength < 1) // Buffer has a size of zero?
 		return DebugResult("UnprepareLongData", MMSYSERR_INVALPARAM, "Invalid buffer size passed to dwBytesRecorded.");
 
-	if (IIMidiHdr->dwFlags & MHDR_INQUEUE)							// The buffer is currently being played from the driver, cannot unprepare
+	if (IIMidiHdr->dwFlags & MHDR_INQUEUE) // The buffer is currently being played from the driver, cannot unprepare
 		return DebugResult("UnprepareLongData", MIDIERR_STILLPLAYING, "The buffer is still in queue.");
 
 	// Unlock the buffer
@@ -769,9 +835,11 @@ extern "C" MMRESULT KDMAPI UnprepareLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHdr
 		if (e != 0x9E)
 			// If that's not the error, then something wrong happened
 			_THROWCRASH;
-		else PrintMessageToDebugLog("UnprepareLongData", "The buffer is already unlocked.");
+		else
+			PrintMessageToDebugLog("UnprepareLongData", "The buffer is already unlocked.");
 	}
-	else PrintMessageToDebugLog("UnprepareLongData", "Buffer unlocked from virtual address space.");
+	else
+		PrintMessageToDebugLog("UnprepareLongData", "Buffer unlocked from virtual address space.");
 
 	PrintVarToDebugLog("UnprepareLongData", "IIMidiHdr Address", &IIMidiHdr, PRINT_UINT64);
 
@@ -783,30 +851,32 @@ extern "C" MMRESULT KDMAPI UnprepareLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHdr
 	return MMSYSERR_NOERROR;
 }
 
-extern "C" MMRESULT KDMAPI SendDirectLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHdrSize) {
+extern "C" MMRESULT KDMAPI SendDirectLongData(MIDIHDR *IIMidiHdr, UINT IIMidiHdrSize)
+{
 	// Check if the MIDIHDR buffer is valid and if the stream is alive
-	while (!bass_initialized)					// The driver isn't ready
+	while (!bass_initialized) // The driver isn't ready
 		/* return */ DebugResult("SendDirectLongData", MIDIERR_NOTREADY, "BASS hasn't been initialized yet.");
-		// Since some apps don't listen to the MIDIERR_NOTREADY return value,
-		// I'm forced to make OmniMIDI spinlock until BASS is ready. (Thank you VanBasco.)
-		_FWAIT;
+	// Since some apps don't listen to the MIDIERR_NOTREADY return value,
+	// I'm forced to make OmniMIDI spinlock until BASS is ready. (Thank you VanBasco.)
+	_FWAIT;
 
 	// Check if the buffer exists before setting FLen,
 	// to avoid EXCEPTION_ACCESS_VIOLATION crashes
-	if (!IIMidiHdr)													// The buffer doesn't exist, invalid parameter
+	// Also reject small pointer values that might be handles (like 0x10001)
+	if (!IIMidiHdr || (DWORD_PTR)IIMidiHdr < 0x100000) // The buffer doesn't exist or is invalid handle
 		return DebugResult("SendDirectLongData", MMSYSERR_INVALPARAM, "The buffer doesn't exist, or hasn't been allocated.");
 
-	if (IIMidiHdrSize != sizeof(MIDIHDR))								// The struct size is not correct
-		return DebugResult("PrepareLongData", MMSYSERR_INVALPARAM, "The MIDIHDR struct size is not correct.");
+	if (IIMidiHdrSize != sizeof(MIDIHDR)) // The struct size is not correct
+		return DebugResult("SendDirectLongData", MMSYSERR_INVALPARAM, "The MIDIHDR struct size is not correct.");
 
-	if (IIMidiHdr->dwBufferLength > LONGMSG_MAXSIZE)				// Buffer is bigger than 64K
+	if (IIMidiHdr->dwBufferLength > LONGMSG_MAXSIZE) // Buffer is bigger than 64K
 		return DebugResult("SendDirectLongData", MMSYSERR_INVALPARAM, "The given stream buffer is greater than 64K.");
 
-	if (IIMidiHdr->dwBytesRecorded > IIMidiHdr->dwBufferLength ||	// The recorded buffer is bigger than the actual buffer? How.
-		IIMidiHdr->dwBufferLength < 1)								// Buffer is smaller tha one?
+	if (IIMidiHdr->dwBytesRecorded > IIMidiHdr->dwBufferLength || // The recorded buffer is bigger than the actual buffer? How.
+		IIMidiHdr->dwBufferLength < 1)							  // Buffer is smaller tha one?
 		return DebugResult("SendDirectLongData", MMSYSERR_INVALPARAM, "Invalid buffer size passed to dwBytesRecorded.");
 
-	if (!(IIMidiHdr->dwFlags & MHDR_PREPARED))						// The buffer is not prepared
+	if (!(IIMidiHdr->dwFlags & MHDR_PREPARED)) // The buffer is not prepared
 		return DebugResult("SendDirectLongData", MIDIERR_UNPREPARED, "The buffer is not prepared");
 
 	// Mark the buffer as in queue
@@ -823,7 +893,8 @@ extern "C" MMRESULT KDMAPI SendDirectLongData(MIDIHDR * IIMidiHdr, UINT IIMidiHd
 	return MMSYSERR_NOERROR;
 }
 
-extern "C" MMRESULT KDMAPI SendDirectLongDataNoBuf(LPSTR MidiHdrData, DWORD MidiHdrDataLen) {
+extern "C" MMRESULT KDMAPI SendDirectLongDataNoBuf(LPSTR MidiHdrData, DWORD MidiHdrDataLen)
+{
 	if (!MidiHdrData)
 		// The buffer doesn't exist, invalid parameter
 		return DebugResult("SendDirectLongDataNoBuf", MMSYSERR_INVALPARAM, "No pointer has been passed to MidiHdrData.");
@@ -843,8 +914,9 @@ extern "C" MMRESULT KDMAPI SendDirectLongDataNoBuf(LPSTR MidiHdrData, DWORD Midi
 	return MMSYSERR_NOERROR;
 }
 
-extern "C" BOOL KDMAPI DriverSettings(DWORD Setting, DWORD Mode, LPVOID Value, UINT cbValue) {
-	switch (Setting) 
+extern "C" BOOL KDMAPI DriverSettings(DWORD Setting, DWORD Mode, LPVOID Value, UINT cbValue)
+{
+	switch (Setting)
 	{
 
 	case OM_MANAGE:
@@ -871,47 +943,46 @@ extern "C" BOOL KDMAPI DriverSettings(DWORD Setting, DWORD Mode, LPVOID Value, U
 		return TRUE;
 	}
 
-	// DriverSettingsCase(OM_CAPFRAMERATE, Mode, BOOL, ManagedSettings.CapFramerate, Value, cbValue);
-	DriverSettingsCase(OM_DEBUGMMODE, Mode, DWORD, ManagedSettings.DebugMode, Value, cbValue);
-	DriverSettingsCase(OM_DISABLEFADEOUT, Mode, BOOL, ManagedSettings.DisableNotesFadeOut, Value, cbValue);
-	DriverSettingsCase(OM_DONTMISSNOTES, Mode, BOOL, ManagedSettings.DontMissNotes, Value, cbValue);
-	DriverSettingsCase(OM_ENABLESFX, Mode, BOOL, ManagedSettings.EnableSFX, Value, cbValue);
-	DriverSettingsCase(OM_FULLVELOCITY, Mode, BOOL, ManagedSettings.FullVelocityMode, Value, cbValue);
-	DriverSettingsCase(OM_IGNOREVELOCITYRANGE, Mode, BOOL, ManagedSettings.IgnoreNotesBetweenVel, Value, cbValue);
-	DriverSettingsCase(OM_IGNOREALLEVENTS, Mode, BOOL, ManagedSettings.IgnoreAllEvents, Value, cbValue);
-	DriverSettingsCase(OM_IGNORESYSRESET, Mode, BOOL, ManagedSettings.IgnoreSysReset, Value, cbValue);
-	DriverSettingsCase(OM_LIMITRANGETO88, Mode, BOOL, ManagedSettings.LimitTo88Keys, Value, cbValue);
-	DriverSettingsCase(OM_MONORENDERING, Mode, BOOL, ManagedSettings.MonoRendering, Value, cbValue);
-	DriverSettingsCase(OM_NOTEOFF1, Mode, BOOL, ManagedSettings.NoteOff1, Value, cbValue);
-	DriverSettingsCase(OM_EVENTPROCWITHAUDIO, Mode, BOOL, ManagedSettings.NotesCatcherWithAudio, Value, cbValue);
-	DriverSettingsCase(OM_SINCINTER, Mode, BOOL, ManagedSettings.SincInter, Value, cbValue);
-	DriverSettingsCase(OM_AUDIOBITDEPTH, Mode, DWORD, ManagedSettings.AudioBitDepth, Value, cbValue);
-	DriverSettingsCase(OM_AUDIOFREQ, Mode, DWORD, ManagedSettings.AudioFrequency, Value, cbValue);
-	DriverSettingsCase(OM_CURRENTENGINE, Mode, DWORD, ManagedSettings.CurrentEngine, Value, cbValue);
-	DriverSettingsCase(OM_BUFFERLENGTH, Mode, DWORD, ManagedSettings.BufferLength, Value, cbValue);
-	DriverSettingsCase(OM_MAXRENDERINGTIME, Mode, DWORD, ManagedSettings.MaxRenderingTime, Value, cbValue);
-	DriverSettingsCase(OM_MINIGNOREVELRANGE, Mode, DWORD, ManagedSettings.MinVelIgnore, Value, cbValue);
-	DriverSettingsCase(OM_MAXIGNOREVELRANGE, Mode, DWORD, ManagedSettings.MaxVelIgnore, Value, cbValue);
-	DriverSettingsCase(OM_OUTPUTVOLUME, Mode, DWORD, ManagedSettings.OutputVolume, Value, cbValue);
-	DriverSettingsCase(OM_TRANSPOSE, Mode, DWORD, ManagedSettings.TransposeValue, Value, cbValue);
-	DriverSettingsCase(OM_MAXVOICES, Mode, DWORD, ManagedSettings.MaxVoices, Value, cbValue);
-	DriverSettingsCase(OM_SINCINTERCONV, Mode, DWORD, ManagedSettings.SincConv, Value, cbValue);
-	DriverSettingsCase(OM_OVERRIDENOTELENGTH, Mode, BOOL, ManagedSettings.OverrideNoteLength, Value, cbValue);
-	DriverSettingsCase(OM_NOTELENGTH, Mode, DWORD, ManagedSettings.NoteLengthValue, Value, cbValue);
-	DriverSettingsCase(OM_ENABLEDELAYNOTEOFF, Mode, BOOL, ManagedSettings.DelayNoteOff, Value, cbValue);
-	DriverSettingsCase(OM_DELAYNOTEOFFVAL, Mode, DWORD, ManagedSettings.DelayNoteOffValue, Value, cbValue);
-	DriverSettingsCase(OM_CHANUPDLENGTH, Mode, DWORD, ManagedSettings.ChannelUpdateLength, Value, cbValue);
-	DriverSettingsCase(OM_UNLOCKCHANS, Mode, BOOL, UnlimitedChannels, Value, cbValue);
+		// DriverSettingsCase(OM_CAPFRAMERATE, Mode, BOOL, ManagedSettings.CapFramerate, Value, cbValue);
+		DriverSettingsCase(OM_DEBUGMMODE, Mode, DWORD, ManagedSettings.DebugMode, Value, cbValue);
+		DriverSettingsCase(OM_DISABLEFADEOUT, Mode, BOOL, ManagedSettings.DisableNotesFadeOut, Value, cbValue);
+		DriverSettingsCase(OM_DONTMISSNOTES, Mode, BOOL, ManagedSettings.DontMissNotes, Value, cbValue);
+		DriverSettingsCase(OM_ENABLESFX, Mode, BOOL, ManagedSettings.EnableSFX, Value, cbValue);
+		DriverSettingsCase(OM_FULLVELOCITY, Mode, BOOL, ManagedSettings.FullVelocityMode, Value, cbValue);
+		DriverSettingsCase(OM_IGNOREVELOCITYRANGE, Mode, BOOL, ManagedSettings.IgnoreNotesBetweenVel, Value, cbValue);
+		DriverSettingsCase(OM_IGNOREALLEVENTS, Mode, BOOL, ManagedSettings.IgnoreAllEvents, Value, cbValue);
+		DriverSettingsCase(OM_IGNORESYSRESET, Mode, BOOL, ManagedSettings.IgnoreSysReset, Value, cbValue);
+		DriverSettingsCase(OM_LIMITRANGETO88, Mode, BOOL, ManagedSettings.LimitTo88Keys, Value, cbValue);
+		DriverSettingsCase(OM_MONORENDERING, Mode, BOOL, ManagedSettings.MonoRendering, Value, cbValue);
+		DriverSettingsCase(OM_NOTEOFF1, Mode, BOOL, ManagedSettings.NoteOff1, Value, cbValue);
+		DriverSettingsCase(OM_EVENTPROCWITHAUDIO, Mode, BOOL, ManagedSettings.NotesCatcherWithAudio, Value, cbValue);
+		DriverSettingsCase(OM_SINCINTER, Mode, BOOL, ManagedSettings.SincInter, Value, cbValue);
+		DriverSettingsCase(OM_AUDIOBITDEPTH, Mode, DWORD, ManagedSettings.AudioBitDepth, Value, cbValue);
+		DriverSettingsCase(OM_AUDIOFREQ, Mode, DWORD, ManagedSettings.AudioFrequency, Value, cbValue);
+		DriverSettingsCase(OM_CURRENTENGINE, Mode, DWORD, ManagedSettings.CurrentEngine, Value, cbValue);
+		DriverSettingsCase(OM_BUFFERLENGTH, Mode, DWORD, ManagedSettings.BufferLength, Value, cbValue);
+		DriverSettingsCase(OM_MAXRENDERINGTIME, Mode, DWORD, ManagedSettings.MaxRenderingTime, Value, cbValue);
+		DriverSettingsCase(OM_MINIGNOREVELRANGE, Mode, DWORD, ManagedSettings.MinVelIgnore, Value, cbValue);
+		DriverSettingsCase(OM_MAXIGNOREVELRANGE, Mode, DWORD, ManagedSettings.MaxVelIgnore, Value, cbValue);
+		DriverSettingsCase(OM_OUTPUTVOLUME, Mode, DWORD, ManagedSettings.OutputVolume, Value, cbValue);
+		DriverSettingsCase(OM_TRANSPOSE, Mode, DWORD, ManagedSettings.TransposeValue, Value, cbValue);
+		DriverSettingsCase(OM_MAXVOICES, Mode, DWORD, ManagedSettings.MaxVoices, Value, cbValue);
+		DriverSettingsCase(OM_SINCINTERCONV, Mode, DWORD, ManagedSettings.SincConv, Value, cbValue);
+		DriverSettingsCase(OM_OVERRIDENOTELENGTH, Mode, BOOL, ManagedSettings.OverrideNoteLength, Value, cbValue);
+		DriverSettingsCase(OM_NOTELENGTH, Mode, DWORD, ManagedSettings.NoteLengthValue, Value, cbValue);
+		DriverSettingsCase(OM_ENABLEDELAYNOTEOFF, Mode, BOOL, ManagedSettings.DelayNoteOff, Value, cbValue);
+		DriverSettingsCase(OM_DELAYNOTEOFFVAL, Mode, DWORD, ManagedSettings.DelayNoteOffValue, Value, cbValue);
+		DriverSettingsCase(OM_CHANUPDLENGTH, Mode, DWORD, ManagedSettings.ChannelUpdateLength, Value, cbValue);
+		DriverSettingsCase(OM_UNLOCKCHANS, Mode, BOOL, UnlimitedChannels, Value, cbValue);
 
 	default:
 	{
 		MessageBox(NULL, L"Unknown setting passed to DriverSettings.", L"OmniMIDI - KDMAPI ERROR", MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
 		return FALSE;
 	}
-
 	}
 
-	if (Mode == OM_SET) 
+	if (Mode == OM_SET)
 	{
 		if (AlreadyInitializedViaKDMAPI)
 		{
@@ -919,31 +990,37 @@ extern "C" BOOL KDMAPI DriverSettings(DWORD Setting, DWORD Mode, LPVOID Value, U
 			LoadSettings(FALSE, TRUE);
 			PrintMessageToDebugLog("KDMAPI_DS", "Done.");
 		}
-		else PrintMessageToDebugLog("KDMAPI_DS", "The new settings will be applied once the driver is started.");
+		else
+			PrintMessageToDebugLog("KDMAPI_DS", "The new settings will be applied once the driver is started.");
 	}
-	else PrintMessageToDebugLog("KDMAPI_DS", "Copied required setting to pointed value.");
+	else
+		PrintMessageToDebugLog("KDMAPI_DS", "Copied required setting to pointed value.");
 
 	return TRUE;
 }
 
-extern "C" DebugInfo* KDMAPI GetDriverDebugInfo() {
+extern "C" DebugInfo *KDMAPI GetDriverDebugInfo()
+{
 	// Parse the debug info, and return them to the app.
 	PrintMessageToDebugLog("KDMAPI_GDDI", "Passed pointer to DebugInfo to the KDMAPI-ready application.");
 	return &ManagedDebugInfo;
 }
 
-extern "C" BOOL KDMAPI LoadCustomSoundFontsList(LPWSTR Directory) {
+extern "C" BOOL KDMAPI LoadCustomSoundFontsList(LPWSTR Directory)
+{
 	// Load the SoundFont from the specified path (It can be a sf2/sfz or a sflist)
-	if (!AlreadyInitializedViaKDMAPI) {
+	if (!AlreadyInitializedViaKDMAPI)
+	{
 		MessageBox(NULL, L"Initialize OmniMIDI before loading a SoundFont!", L"KDMAPI ERROR", MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
 		return FALSE;
 	}
-	
+
 	return FontLoader(Directory);
 }
 
-extern "C" DWORD64 KDMAPI timeGetTime64() {
+extern "C" DWORD64 KDMAPI timeGetTime64()
+{
 	ULONGLONG CurrentTime;
 	NtQuerySystemTime(&CurrentTime);
-	return (((CurrentTime) - TickStart) * (SpeedHack / 10000.0));
+	return (((CurrentTime)-TickStart) * (SpeedHack / 10000.0));
 }

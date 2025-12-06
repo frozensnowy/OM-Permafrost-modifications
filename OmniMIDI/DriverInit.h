@@ -452,9 +452,50 @@ void AudioEngine(LPVOID lpParam)
 
 DWORD CALLBACK ProcData(void *buffer, DWORD length, void *user)
 {
-	// Get the processed audio data, and send it to the WASAPI device
+	// Handle state transitions at frame boundary
+	AudioBus_ProcessFrameBoundary();
+
+	// Get audio from BASSMIDI
 	DWORD data = BASS_ChannelGetData(OMStream, buffer, length);
-	return (data == -1) ? NULL : data;
+	if (data == -1)
+		return 0;
+
+	AudioBus_RecordSynthComplete();
+
+	// Permafrost takeover?
+	if (AudioBus_IsTakeoverActive())
+	{
+		DWORD sampleCount = length / sizeof(float);
+
+		// Simple sync path - send audio, wait, receive. Adds latency but works.
+
+		// Send to Permafrost
+		float *outBuffer = AudioBus_GetOutChannelBuffer(0, g_AudioBusPtr->OutWriteIndex & 1);
+		if (outBuffer && sampleCount <= AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO)
+		{
+			memcpy(outBuffer, buffer, length);
+			g_AudioBusPtr->CurrentFrameSamples = sampleCount;
+		}
+		AudioBus_SwapOutBuffer();
+		AudioBus_SignalAudioReady();
+
+		// Wait for Permafrost (blocking)
+		if (AudioBus_WaitForProcessedAudio(50)) // 50ms should be plenty
+		{
+			// Read processed audio back
+			DWORD stereoSamples = sampleCount / 2;
+			if (AudioBus_ReadProcessedAudio((float *)buffer, stereoSamples))
+			{
+				AudioBus_RecordAudioOutput();
+				return data;
+			}
+		}
+		// Timed out or failed - fall back to direct
+	}
+
+	// Direct output - buffer already has BASSMIDI data
+	AudioBus_RecordAudioOutput();
+	return data;
 }
 
 DWORD CALLBACK ProcDataSameThread(void *buffer, DWORD length, void *user)
@@ -642,6 +683,15 @@ BOOL InitializeStream(INT32 mixfreq)
 
 void FreeUpBASS()
 {
+	// Let go of Permafrost if we had it
+	if (AudioBus_IsTakeoverActive())
+	{
+		AudioBus_ReleaseTakeover();
+		PrintMessageToDebugLog("FreeUpBASSFunc", "Released Permafrost audio takeover.");
+	}
+	AudioBus_RemoveChannelDSPs();
+	PrintMessageToDebugLog("FreeUpBASSFunc", "Removed AudioBus channel DSPs.");
+
 	// Remove effects
 	if (ChVolume)
 	{
@@ -778,8 +828,7 @@ void FreeUpStream()
 		}
 	}
 
-	// Clean up AudioBus shared memory
-	// Do this before clearing volume so Permafrost knows we're shutting down
+	// Kill AudioBus before clearing volume (so Permafrost sees us going away)
 	AudioBus_Destroy();
 
 	// Send dummy values to the mixer
@@ -1530,14 +1579,19 @@ BEGSWITCH:
 	InitializeOrUpdateEffects();
 #endif
 
-	// Initialize AudioBus shared memory for Permafrost integration
-	// This lets Permafrost read audio levels and voice counts in real-time
+	// Fire up AudioBus for Permafrost (real-time levels + voice counts)
 	if (!AudioBus_IsConnected())
 	{
 		if (AudioBus_Create())
 		{
 			PrintMessageToDebugLog("InitializeBASSFunc", "AudioBus shared memory created for Permafrost.");
 			AudioBus_SetSampleRate(ManagedSettings.AudioFrequency);
+
+			// Hook per-channel DSPs for when Permafrost takes over
+			if (OMStream && AudioBus_SetupChannelDSPs(OMStream))
+			{
+				PrintMessageToDebugLog("InitializeBASSFunc", "AudioBus channel DSPs set up for roundtrip audio.");
+			}
 		}
 		else
 		{
@@ -1545,7 +1599,7 @@ BEGSWITCH:
 		}
 	}
 
-	// Initialize Permafrost mixer registry key for command handling
+	// Set up Permafrost mixer command handling
 	InitializePermafrostMixer();
 
 	return InitializationCompleted;
