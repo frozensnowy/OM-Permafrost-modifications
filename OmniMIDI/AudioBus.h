@@ -34,11 +34,16 @@ If Permafrost isn't there, we just output directly. No drama.
 
 // Audio buffer config
 #define AUDIOBUS_NUM_CHANNELS 16
-#define AUDIOBUS_BUFFER_SAMPLES 2048 // Samples per buffer (increased for larger BASS buffers)
-#define AUDIOBUS_SAMPLE_SIZE 4       // sizeof(float)
-#define AUDIOBUS_STEREO 2            // L + R
-#define AUDIOBUS_RING_SIZE 8         // Keep small for now
-#define AUDIOBUS_RING_PREFILL 4      // Keep small for now
+#define AUDIOBUS_MAX_BUFFER_SAMPLES 8192                    // Max samples for memory allocation
+#define AUDIOBUS_DEFAULT_BUFFER_SAMPLES 2048                // Default if not configured
+#define AUDIOBUS_BUFFER_SAMPLES AUDIOBUS_MAX_BUFFER_SAMPLES // Backward compat (use max for static allocs)
+#define AUDIOBUS_SAMPLE_SIZE 4                              // sizeof(float)
+#define AUDIOBUS_STEREO 2                                   // L + R
+#define AUDIOBUS_RING_SIZE 8                                // Keep small for now
+#define AUDIOBUS_RING_PREFILL 4                             // Keep small for now
+
+// Configured buffer size (read from registry, clamped to max)
+static DWORD g_ConfiguredBufferSamples = AUDIOBUS_DEFAULT_BUFFER_SAMPLES;
 
 // Timeout values
 #define AUDIOBUS_TAKEOVER_TIMEOUT_MS 100  // How long to wait for Permafrost to respond
@@ -149,7 +154,7 @@ typedef struct AudioBusHeader
 // Double-buffered: A and B for lock-free operation
 
 // Size of one channel's stereo buffer
-#define AUDIOBUS_CHANNEL_BUFFER_SIZE (AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO * AUDIOBUS_SAMPLE_SIZE)
+#define AUDIOBUS_CHANNEL_BUFFER_SIZE (AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO * AUDIOBUS_SAMPLE_SIZE)
 
 // 16-channel OUT region (OmniMIDI -> Permafrost)
 // Layout: [Ch0 BufferA][Ch0 BufferB][Ch1 BufferA][Ch1 BufferB]...
@@ -219,15 +224,47 @@ static inline ULONGLONG AudioBus_TicksToMicroseconds(ULONGLONG ticks)
     return (ticks * 1000000ULL) / g_QPCFrequency;
 }
 
+// Read configured buffer size from registry
+static DWORD AudioBus_ReadBufferSizeFromRegistry()
+{
+    DWORD bufferSize = AUDIOBUS_DEFAULT_BUFFER_SAMPLES;
+    HKEY hKey;
+
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\OmniMIDI\\Configuration", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        DWORD dwType = REG_DWORD;
+        DWORD dwSize = sizeof(DWORD);
+        RegQueryValueExW(hKey, L"RoundtripBufferSize", NULL, &dwType, (LPBYTE)&bufferSize, &dwSize);
+        RegCloseKey(hKey);
+    }
+
+    // Clamp to valid range (128 to max)
+    if (bufferSize < 128)
+        bufferSize = 128;
+    if (bufferSize > AUDIOBUS_MAX_BUFFER_SAMPLES)
+        bufferSize = AUDIOBUS_MAX_BUFFER_SAMPLES;
+
+    return bufferSize;
+}
+
+// Get the current configured buffer size (from header, not compile-time constant)
+static inline DWORD AudioBus_GetBufferSamples()
+{
+    if (g_AudioBusPtr && g_AudioBusPtr->BufferSize > 0 && g_AudioBusPtr->BufferSize <= AUDIOBUS_MAX_BUFFER_SAMPLES)
+        return g_AudioBusPtr->BufferSize;
+    return g_ConfiguredBufferSamples;
+}
+
 // Get pointer to specific channel's buffer (A or B)
 static inline float *AudioBus_GetOutChannelBuffer(int channel, int bufferIndex)
 {
     if (!g_AudioBusOutPtr || channel < 0 || channel >= AUDIOBUS_NUM_CHANNELS)
         return NULL;
 
-    // Each channel has 2 buffers (A and B), each with AUDIOBUS_BUFFER_SAMPLES * 2 floats
-    int channelOffset = channel * 2 * (AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO);
-    int bufferOffset = bufferIndex * (AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO);
+    // Each channel has 2 buffers (A and B), each with MAX_BUFFER_SAMPLES * 2 floats (for offset calculation)
+    // The actual data used is determined by BufferSize in header
+    int channelOffset = channel * 2 * (AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO);
+    int bufferOffset = bufferIndex * (AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO);
 
     return g_AudioBusOutPtr + channelOffset + bufferOffset;
 }
@@ -238,7 +275,8 @@ static inline float *AudioBus_GetInBuffer(int bufferIndex)
     if (!g_AudioBusInPtr)
         return NULL;
 
-    int bufferOffset = bufferIndex * (AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO);
+    // Use max buffer size for offset calculation (memory is allocated for max)
+    int bufferOffset = bufferIndex * (AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO);
     return g_AudioBusInPtr + bufferOffset;
 }
 
@@ -389,6 +427,9 @@ static BOOL AudioBus_Create()
         return FALSE;
     }
 
+    // Read configured buffer size from registry
+    g_ConfiguredBufferSamples = AudioBus_ReadBufferSizeFromRegistry();
+
     // Initialize header
     WaitForSingleObject(g_AudioBusMutex, INFINITE);
 
@@ -403,7 +444,7 @@ static BOOL AudioBus_Create()
     g_AudioBusPtr->Version = AUDIOBUS_VERSION;
     g_AudioBusPtr->ProcessID = pid;
     g_AudioBusPtr->SampleRate = ManagedSettings.AudioFrequency;
-    g_AudioBusPtr->BufferSize = AUDIOBUS_BUFFER_SAMPLES;
+    g_AudioBusPtr->BufferSize = g_ConfiguredBufferSamples; // Configured buffer size from registry
     g_AudioBusPtr->NumChannels = AUDIOBUS_NUM_CHANNELS;
     g_AudioBusPtr->Flags = AUDIOBUS_FLAG_ACTIVE;
     g_AudioBusPtr->TakeoverState = TAKEOVER_DIRECT;
@@ -769,7 +810,8 @@ void CALLBACK AudioBus_ChannelDSPCallback(HDSP handle, DWORD channel, void *buff
     if (destBuffer)
     {
         // Copy the samples (might be less than full buffer)
-        DWORD copyCount = min(sampleCount, AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO);
+        DWORD bufSamples = AudioBus_GetBufferSamples();
+        DWORD copyCount = min(sampleCount, bufSamples * AUDIOBUS_STEREO);
         memcpy(destBuffer, samples, copyCount * sizeof(float));
     }
 }
@@ -976,7 +1018,8 @@ static BOOL AudioBus_ReadProcessedAudio(float *buffer, DWORD sampleCount)
         return FALSE;
 
     // Copy the samples
-    DWORD copyCount = min(sampleCount * AUDIOBUS_STEREO, AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO);
+    DWORD bufSamples = AudioBus_GetBufferSamples();
+    DWORD copyCount = min(sampleCount * AUDIOBUS_STEREO, bufSamples * AUDIOBUS_STEREO);
     memcpy(buffer, srcBuffer, copyCount * sizeof(float));
 
     g_AudioBusPtr->LastSharedMemReadTime = AudioBus_GetQPCTicks();
@@ -1052,4 +1095,4 @@ static BOOL AudioBus_ProcessAudioFrame()
     return TRUE;
 }
 
-// Frozy was here.
+// Frozy is still here.
