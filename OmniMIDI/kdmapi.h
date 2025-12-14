@@ -124,7 +124,9 @@ void CookedPlayerSystem(CookedPlayer *Player)
 			int delt = (int)(tdiff - oldsleep); // Calculate drift
 			deltasleep += delt;					// Accumlate drift
 
-			sleeptime = (delaytick * Player->TempoMulti); // TODO: can overflow
+			// Use 64-bit math to prevent overflow with large delta times
+			INT64 sleeptime64 = (INT64)delaytick * Player->TempoMulti;
+			sleeptime = (sleeptime64 > INT_MAX) ? INT_MAX : (int)sleeptime64;
 			// sleeptime *= speedcontrol;
 			oldsleep = sleeptime;
 

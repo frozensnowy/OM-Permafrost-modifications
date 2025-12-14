@@ -1,5 +1,8 @@
 /*
-OmniMIDI debug functions
+OmniMIDI Debug & Logging System
+
+Original by Keppy's Software (2011-2024)
+Permafrost Edition modifications by Frozen Snow (2024-2025)
 */
 
 #define PRINT_INT32 0
@@ -11,9 +14,17 @@ OmniMIDI debug functions
 #define PRINT_WCHAR 6
 #define PRINT_CHAR 7
 
-#define CurrentError(Message, Error, Text) case Error: sprintf_s(Message, NTFS_MAX_PATH, "Error %s:\n%s", #Error, #Text); break
-#define DefError(Message, Error, Text) sprintf_s(Message, NTFS_MAX_PATH, "Error %s:\n%s", #Error, #Text); break
-#define arre(wat) case wat: sprintf(MessageBuf + strlen(MessageBuf), "\nCode: %s", #wat); break
+#define CurrentError(Message, Error, Text)                                 \
+	case Error:                                                            \
+		sprintf_s(Message, NTFS_MAX_PATH, "Error %s:\n%s", #Error, #Text); \
+		break
+#define DefError(Message, Error, Text)                                 \
+	sprintf_s(Message, NTFS_MAX_PATH, "Error %s:\n%s", #Error, #Text); \
+	break
+#define arre(wat)                                                     \
+	case wat:                                                         \
+		sprintf(MessageBuf + strlen(MessageBuf), "\nCode: %s", #wat); \
+		break
 
 static HANDLE ExceptionHandler = nullptr;
 static const char hex[] = "0123456789ABCDEF";
@@ -27,8 +38,8 @@ bool GetVersionInfo(
 	int &build,
 	int &revision)
 {
-	DWORD   verBufferSize;
-	char    verBuffer[2048];
+	DWORD verBufferSize;
+	char verBuffer[2048];
 
 	//  Get the size of the version info block in the file
 	verBufferSize = GetFileVersionInfoSize(filename, NULL);
@@ -42,10 +53,10 @@ bool GetVersionInfo(
 
 			//  Query the version information for neutral language
 			if (TRUE == VerQueryValue(
-				verBuffer,
-				_T("\\"),
-				reinterpret_cast<LPVOID*>(&verInfo),
-				&length))
+							verBuffer,
+							_T("\\"),
+							reinterpret_cast<LPVOID *>(&verInfo),
+							&length))
 			{
 				//  Pull the version values.
 				major = HIWORD(verInfo->dwProductVersionMS);
@@ -60,15 +71,52 @@ bool GetVersionInfo(
 	return false;
 }
 
-void CreateConsole() {
+// Cleans up log files older than retentionDays (0 = keep all)
+void CleanupOldLogs(LPCWSTR logsDir, int retentionDays)
+{
+	if (retentionDays <= 0)
+		return;
+
+	WIN32_FIND_DATAW findData;
+	WCHAR searchPath[MAX_PATH];
+	swprintf_s(searchPath, MAX_PATH, L"%s*.log", logsDir);
+
+	HANDLE hFind = FindFirstFileW(searchPath, &findData);
+	if (hFind == INVALID_HANDLE_VALUE)
+		return;
+
+	FILETIME now;
+	GetSystemTimeAsFileTime(&now);
+	ULARGE_INTEGER nowTime = {now.dwLowDateTime, now.dwHighDateTime};
+	ULONGLONG maxAge = (ULONGLONG)retentionDays * 24 * 60 * 60 * 10000000ULL; // days to 100ns ticks
+
+	do
+	{
+		if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			continue;
+
+		ULARGE_INTEGER fileTime = {findData.ftLastWriteTime.dwLowDateTime, findData.ftLastWriteTime.dwHighDateTime};
+		if (nowTime.QuadPart - fileTime.QuadPart > maxAge)
+		{
+			WCHAR fullPath[MAX_PATH];
+			swprintf_s(fullPath, MAX_PATH, L"%s%s", logsDir, findData.cFileName);
+			DeleteFileW(fullPath);
+		}
+	} while (FindNextFileW(hFind, &findData));
+
+	FindClose(hFind);
+}
+
+void CreateConsole()
+{
 	// Open the debug output's file
 	if (ManagedSettings.DebugMode)
 	{
 		if (DebugLog)
 			return;
 
-		TCHAR MainLibrary[MAX_PATH] = { 0 };
-		TCHAR DebugDir[MAX_PATH] = { 0 };
+		TCHAR MainLibrary[MAX_PATH] = {0};
+		TCHAR DebugDir[MAX_PATH] = {0};
 
 		// Get user profile's path
 		if (!GetFolderPath(FOLDERID_Profile, CSIDL_PROFILE, DebugDir, sizeof(DebugDir)))
@@ -77,15 +125,33 @@ void CreateConsole() {
 		// Get the debug info first
 		GetAppName();
 
-		// Append "\OmniMIDI\debug\" to "%userprofile%"
-		wcscat_s(DebugDir, NTFS_MAX_PATH, L"\\OmniMIDI\\debug\\");
+		// Append "\OmniMIDI\logs\" to "%userprofile%"
+		wcscat_s(DebugDir, NTFS_MAX_PATH, L"\\OmniMIDI\\logs\\");
 
-		// Create "%userprofile%\OmniMIDI\debug\", in case it doesn't exist
+		// Create "%userprofile%\OmniMIDI\logs\", in case it doesn't exist
 		CreateDirectoryW(DebugDir, NULL);
 
-		// Append the app's filename to the output file's path
+		// Clean up old logs based on registry setting (default 7 days)
+		HKEY hKey;
+		int retentionDays = 7;
+		if (RegOpenKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\OmniMIDI\\Configuration", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+		{
+			DWORD val = 0, size = sizeof(val);
+			if (RegQueryValueExW(hKey, L"LogRetentionDays", NULL, NULL, (LPBYTE)&val, &size) == ERROR_SUCCESS)
+				retentionDays = (int)val;
+			RegCloseKey(hKey);
+		}
+		CleanupOldLogs(DebugDir, retentionDays);
+
+		// Build filename with date: AppName_YYYY-MM-DD.log
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+		WCHAR dateStr[32];
+		swprintf_s(dateStr, 32, L"_%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
+
 		wcscat_s(DebugDir, NTFS_MAX_PATH, AppNameW);
-		wcscat_s(DebugDir, NTFS_MAX_PATH, _T(" (Debug output).txt"));
+		wcscat_s(DebugDir, NTFS_MAX_PATH, dateStr);
+		wcscat_s(DebugDir, NTFS_MAX_PATH, L".log");
 
 		// Parse OmniMIDI's current version
 		GetModuleFileNameW(hinst, MainLibrary, NTFS_MAX_PATH);
@@ -103,59 +169,66 @@ void CreateConsole() {
 		{
 			fprintf(DebugLog, "=======================================\n");
 			fprintf(DebugLog, "OmniMIDI %d.%d.%d ", major, minor, build);
-			if (revision) fprintf(DebugLog, "CR%d ", revision);
+			if (revision)
+				fprintf(DebugLog, "CR%d ", revision);
 			fprintf(DebugLog, "(KDMAPI %d.%d.%d, Revision %d)\n", CUR_MAJOR, CUR_MINOR, CUR_BUILD, CUR_REV);
-			fprintf(DebugLog, "Copyright(C) 2021 - Keppy's Software\n\n");
+			fprintf(DebugLog, "Original by Keppy's Software | Permafrost Edition by Frozen Snow\n\n");
 			IntroAlreadyShown = TRUE;
 		}
 	}
 }
 
-void CloseConsole() {
+void CloseConsole()
+{
 	if (ManagedSettings.DebugMode)
 	{
 		std::lock_guard<std::mutex> lock(DebugMutex);
 
-		if (!DebugLog) {
+		if (!DebugLog)
+		{
 			fclose(DebugLog);
 			DebugLog = NULL;
 		}
 	}
 }
 
-void PrintCurrentTime() {
+void PrintCurrentTime()
+{
 	// Get time
 	SYSTEMTIME stime;
 	FILETIME ltime;
 	FILETIME ftTimeStamp;
 
-	GetSystemTimeAsFileTime(&ftTimeStamp); //Gets the current system time
-	FileTimeToLocalFileTime(&ftTimeStamp, &ltime); //convert in local time and store in ltime
-	FileTimeToSystemTime(&ltime, &stime); //convert in system time and store in stime
+	GetSystemTimeAsFileTime(&ftTimeStamp);		   // Gets the current system time
+	FileTimeToLocalFileTime(&ftTimeStamp, &ltime); // convert in local time and store in ltime
+	FileTimeToSystemTime(&ltime, &stime);		   // convert in system time and store in stime
 
 	// Print to log
 	fprintf(DebugLog, "%02d-%02d-%04d %02d:%02d:%02d.%03d - ",
-		stime.wDay, stime.wMonth, stime.wYear, stime.wHour, stime.wMinute, stime.wSecond, stime.wMilliseconds);
+			stime.wDay, stime.wMonth, stime.wYear, stime.wHour, stime.wMinute, stime.wSecond, stime.wMilliseconds);
 }
 
-void PrintCurrentTimeW() {
+void PrintCurrentTimeW()
+{
 	// Get time
 	SYSTEMTIME stime;
 	FILETIME ltime;
 	FILETIME ftTimeStamp;
 
-	GetSystemTimeAsFileTime(&ftTimeStamp); //Gets the current system time
-	FileTimeToLocalFileTime(&ftTimeStamp, &ltime); //convert in local time and store in ltime
-	FileTimeToSystemTime(&ltime, &stime); //convert in system time and store in stime
+	GetSystemTimeAsFileTime(&ftTimeStamp);		   // Gets the current system time
+	FileTimeToLocalFileTime(&ftTimeStamp, &ltime); // convert in local time and store in ltime
+	FileTimeToSystemTime(&ltime, &stime);		   // convert in system time and store in stime
 
 	// Print to log
 	fwprintf(DebugLog, L"%02d-%02d-%04d %02d:%02d:%02d.%03d - ",
-		stime.wDay, stime.wMonth, stime.wYear, stime.wHour, stime.wMinute, stime.wSecond, stime.wMilliseconds);
+			 stime.wDay, stime.wMonth, stime.wYear, stime.wHour, stime.wMinute, stime.wSecond, stime.wMilliseconds);
 }
 
-void PrintHexToDebugLog(DWORD_PTR a, DWORD_PTR b) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintHexToDebugLog(DWORD_PTR a, DWORD_PTR b)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -174,24 +247,28 @@ void PrintHexToDebugLog(DWORD_PTR a, DWORD_PTR b) {
 	}
 }
 
-void PrintMMToDebugLog(UINT uDID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintMMToDebugLog(UINT uDID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
 
 		// Print to log
 		PrintCurrentTime();
-		try {
-			sprintf(Msg, "Stage <<modMessage>> | uDeviceID-> %d, uMsg-> %d, dwUser-> %d (LPVOID: %d), dwParam1-> %d, dwParam2-> %d", 
-				uDID, uMsg, (DWORD)dwUser, *(DWORD_PTR*)dwUser, (DWORD)dwParam1, (DWORD)dwParam2);
+		try
+		{
+			sprintf(Msg, "Stage <<modMessage>> | uDeviceID-> %d, uMsg-> %d, dwUser-> %d (LPVOID: %d), dwParam1-> %d, dwParam2-> %d",
+					uDID, uMsg, (DWORD)dwUser, *(DWORD_PTR *)dwUser, (DWORD)dwParam1, (DWORD)dwParam2);
 		}
-		catch (...) {
+		catch (...)
+		{
 			sprintf(Msg, "Stage <<modMessage>> | uDeviceID-> %d, uMsg-> %d, dwUser-> %d (LPVOID: FAIL), dwParam1-> %d, dwParam2-> %d",
-				uDID, uMsg, (DWORD)dwUser, (DWORD)dwParam1, (DWORD)dwParam2);
+					uDID, uMsg, (DWORD)dwUser, (DWORD)dwParam1, (DWORD)dwParam2);
 		}
-	
+
 		fprintf(DebugLog, Msg);
 		OutputDebugStringA(Msg);
 
@@ -202,10 +279,12 @@ void PrintMMToDebugLog(UINT uDID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dwParam
 	}
 }
 
-void PrintLoadedDLLToDebugLog(LPCWSTR LibraryW, LPCSTR Status) {
-	if (ManagedSettings.DebugMode) {
-		wchar_t* Lib = (wchar_t*)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintLoadedDLLToDebugLog(LPCWSTR LibraryW, LPCSTR Status)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		wchar_t *Lib = (wchar_t *)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -228,10 +307,12 @@ void PrintLoadedDLLToDebugLog(LPCWSTR LibraryW, LPCSTR Status) {
 	}
 }
 
-void PrintSoundFontToDebugLog(LPCWSTR SoundFontW, LPCSTR Status) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
-		char* SoundFontA = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintSoundFontToDebugLog(LPCWSTR SoundFontW, LPCSTR Status)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
+		char *SoundFontA = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		wcstombs(SoundFontA, SoundFontW, wcslen(SoundFontW) + 1);
 		LPSTR SoundFontNameA = PathFindFileNameA(SoundFontA);
@@ -253,19 +334,21 @@ void PrintSoundFontToDebugLog(LPCWSTR SoundFontW, LPCSTR Status) {
 	}
 }
 
-void PrintCallbackToDebugLog(LPCSTR Stage, HMIDI OMHM, DWORD_PTR OMCB, DWORD_PTR OMI, DWORD_PTR OMU, DWORD OMCM) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintCallbackToDebugLog(LPCSTR Stage, HMIDI OMHM, DWORD_PTR OMCB, DWORD_PTR OMI, DWORD_PTR OMU, DWORD OMCM)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
 
 		// Print to log
 		PrintCurrentTime();
-		
+
 		sprintf(
-			Msg, 
-			"Stage <<%s>> | OMHM: %08X - OMCB: %08X - OMI: %08X - OMU: %08X - OMCM: %08X\n", 
+			Msg,
+			"Stage <<%s>> | OMHM: %08X - OMCB: %08X - OMI: %08X - OMU: %08X - OMCM: %08X\n",
 			Stage, (DWORD)OMHM, (DWORD)OMCB, (DWORD)OMI, (DWORD)OMU, (DWORD)OMCM);
 
 		fprintf(DebugLog, Msg);
@@ -278,9 +361,11 @@ void PrintCallbackToDebugLog(LPCSTR Stage, HMIDI OMHM, DWORD_PTR OMCB, DWORD_PTR
 	}
 }
 
-void PrintMessageToDebugLog(LPCSTR Stage, LPCSTR Status) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintMessageToDebugLog(LPCSTR Stage, LPCSTR Status)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -300,9 +385,11 @@ void PrintMessageToDebugLog(LPCSTR Stage, LPCSTR Status) {
 	}
 }
 
-void PrintMessageWToDebugLog(LPCWSTR Stage, LPCWSTR Status) {
-	if (ManagedSettings.DebugMode) {
-		wchar_t* Msg = (wchar_t*)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
+void PrintMessageWToDebugLog(LPCWSTR Stage, LPCWSTR Status)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		wchar_t *Msg = (wchar_t *)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -320,9 +407,11 @@ void PrintMessageWToDebugLog(LPCWSTR Stage, LPCWSTR Status) {
 	}
 }
 
-void PrintBoolToDebugLog(LPCSTR Stage, BOOL Status) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintBoolToDebugLog(LPCSTR Stage, BOOL Status)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -340,28 +429,31 @@ void PrintBoolToDebugLog(LPCSTR Stage, BOOL Status) {
 	}
 }
 
-void PrintVarToDebugLog(LPCSTR Stage, LPCSTR ValueName, void* Var, int Type) {
-	if (ManagedSettings.DebugMode) {
-		char* AMsg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
-		wchar_t* WMsg = (wchar_t*)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
+void PrintVarToDebugLog(LPCSTR Stage, LPCSTR ValueName, void *Var, int Type)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *AMsg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
+		wchar_t *WMsg = (wchar_t *)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
 
 		// Print to log
 		PrintCurrentTime();
-		switch (Type) {
+		switch (Type)
+		{
 		case PRINT_INT32:
 		{
-			int I32Var = *(long*)Var;
+			int I32Var = *(long *)Var;
 			sprintf(AMsg, "Stage <<%s>> | %s: %i (HEX: %08X, 32-bit integer)\n", Stage, ValueName, I32Var, I32Var);
 			fprintf(DebugLog, AMsg);
 			OutputDebugStringA(AMsg);
 			break;
 		}
 		case PRINT_UINT32:
-		{			
-			int U32Var = *(unsigned long*)Var;
+		{
+			int U32Var = *(unsigned long *)Var;
 			sprintf(AMsg, "Stage <<%s>> | %s: %u (HEX: %08X, 32-bit unsigned integer)\n", Stage, ValueName, U32Var, U32Var);
 			fprintf(DebugLog, AMsg);
 			OutputDebugStringA(AMsg);
@@ -369,15 +461,15 @@ void PrintVarToDebugLog(LPCSTR Stage, LPCSTR ValueName, void* Var, int Type) {
 		}
 		case PRINT_INT64:
 		{
-			int I64Var = *(long long*)Var;
+			int I64Var = *(long long *)Var;
 			sprintf(AMsg, "Stage <<%s>> | %s: %i (HEX: %016X, 64-bit integer)\n", Stage, ValueName, I64Var, I64Var);
 			fprintf(DebugLog, AMsg);
 			OutputDebugStringA(AMsg);
 			break;
 		}
 		case PRINT_UINT64:
-		{			
-			int U64Var = *(unsigned long long*)Var;
+		{
+			int U64Var = *(unsigned long long *)Var;
 			sprintf(AMsg, "Stage <<%s>> | %s: %u (HEX: %016X, 64-bit unsigned integer)\n", Stage, ValueName, U64Var, U64Var);
 			fprintf(DebugLog, AMsg);
 			OutputDebugStringA(AMsg);
@@ -385,15 +477,15 @@ void PrintVarToDebugLog(LPCSTR Stage, LPCSTR ValueName, void* Var, int Type) {
 		}
 		case PRINT_FLOAT:
 		{
-			float FVar = *(float*)Var;
+			float FVar = *(float *)Var;
 			sprintf(AMsg, "Stage <<%s>> | %s: %f (float)\n", Stage, ValueName, FVar);
 			fprintf(DebugLog, AMsg);
 			OutputDebugStringA(AMsg);
 			break;
 		}
 		case PRINT_BOOL:
-		{			
-			BOOL BVar = *(BOOL*)Var;
+		{
+			BOOL BVar = *(BOOL *)Var;
 			sprintf(AMsg, "Stage <<%s>> | %s: %s (bool)\n", Stage, ValueName, BVar ? "true" : "false");
 			fprintf(DebugLog, AMsg);
 			OutputDebugStringA(AMsg);
@@ -430,9 +522,11 @@ void PrintVarToDebugLog(LPCSTR Stage, LPCSTR ValueName, void* Var, int Type) {
 	}
 }
 
-void PrintBASSErrorMessageToDebugLog(LPCWSTR BE, LPCWSTR BED) {
-	if (ManagedSettings.DebugMode) {
-		wchar_t* Msg = (wchar_t*)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
+void PrintBASSErrorMessageToDebugLog(LPCWSTR BE, LPCWSTR BED)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		wchar_t *Msg = (wchar_t *)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -450,9 +544,11 @@ void PrintBASSErrorMessageToDebugLog(LPCWSTR BE, LPCWSTR BED) {
 	}
 }
 
-void PrintMemoryMessageToDebugLog(LPCSTR Stage, LPCSTR Status, BOOL IsRatio, ULONGLONG Memory) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintMemoryMessageToDebugLog(LPCSTR Stage, LPCSTR Status, BOOL IsRatio, ULONGLONG Memory)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -470,9 +566,11 @@ void PrintMemoryMessageToDebugLog(LPCSTR Stage, LPCSTR Status, BOOL IsRatio, ULO
 	}
 }
 
-void PrintMIDIOPENDESCToDebugLog(LPCSTR Stage, MIDIOPENDESC* MIDIOD, DWORD_PTR dwUser, DWORD Flags) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintMIDIOPENDESCToDebugLog(LPCSTR Stage, MIDIOPENDESC *MIDIOD, DWORD_PTR dwUser, DWORD Flags)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -480,8 +578,8 @@ void PrintMIDIOPENDESCToDebugLog(LPCSTR Stage, MIDIOPENDESC* MIDIOD, DWORD_PTR d
 		// Print to log
 		PrintCurrentTime();
 		sprintf(
-			Msg, 
-			"Stage <<%s>> | HMIDI: %08X - dwCallback: %08X - dwInstance: %08X - dwUser: %08X - OMFlags: %08X\n", 
+			Msg,
+			"Stage <<%s>> | HMIDI: %08X - dwCallback: %08X - dwInstance: %08X - dwUser: %08X - OMFlags: %08X\n",
 			Stage, MIDIOD->hMidi, MIDIOD->dwCallback, MIDIOD->dwInstance, dwUser, Flags);
 
 		fprintf(DebugLog, Msg);
@@ -494,9 +592,11 @@ void PrintMIDIOPENDESCToDebugLog(LPCSTR Stage, MIDIOPENDESC* MIDIOD, DWORD_PTR d
 	}
 }
 
-void PrintMIDIHDRToDebugLog(LPCSTR Stage, MIDIHDR* IIMidiHdr) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintMIDIHDRToDebugLog(LPCSTR Stage, MIDIHDR *IIMidiHdr)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -529,9 +629,11 @@ void PrintMIDIHDRToDebugLog(LPCSTR Stage, MIDIHDR* IIMidiHdr) {
 	}
 }
 
-void PrintEventToDebugLog(DWORD dwParam) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintEventToDebugLog(DWORD dwParam)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -540,13 +642,16 @@ void PrintEventToDebugLog(DWORD dwParam) {
 		PrintCurrentTime();
 
 		sprintf(Msg, "Stage <<MIDIEvent | %06X>> | Event ID: ", dwParam);
-		switch (dwParam & 0xF0) {
+		switch (dwParam & 0xF0)
+		{
 		case 0x80:
 			sprintf(Msg + strlen(Msg), "Note off, Channel: %u, Key: %u\n", GETCHANNEL(dwParam), GETFP(dwParam));
 			break;
 		case 0x90:
-			if (GETSP(dwParam)) sprintf(Msg + strlen(Msg), "Note on, Channel: %u, Key: %u, Velocity: %u\n", GETCHANNEL(dwParam), GETFP(dwParam), GETSP(dwParam));
-			else sprintf(Msg + strlen(Msg), "Note off, Channel: %u, Key: %u\n", GETCHANNEL(dwParam), GETFP(dwParam));
+			if (GETSP(dwParam))
+				sprintf(Msg + strlen(Msg), "Note on, Channel: %u, Key: %u, Velocity: %u\n", GETCHANNEL(dwParam), GETFP(dwParam), GETSP(dwParam));
+			else
+				sprintf(Msg + strlen(Msg), "Note off, Channel: %u, Key: %u\n", GETCHANNEL(dwParam), GETFP(dwParam));
 			break;
 		case 0xA0:
 			sprintf(Msg + strlen(Msg), "Polyphonic aftertouch, Channel: %u, Key: %u, Touch: %u\n", GETCHANNEL(dwParam), GETFP(dwParam), GETSP(dwParam));
@@ -563,8 +668,10 @@ void PrintEventToDebugLog(DWORD dwParam) {
 		case 0xE0:
 			sprintf(Msg + strlen(Msg), "Pitch wheel (RPN %u), Channel: %u, LSB: %u, MSB: %u\n", ((dwParam - 0xC0) & 0xE0), GETCHANNEL(dwParam), GETFP(dwParam), GETSP(dwParam));
 			break;
-		case 0xF0:{
-			switch (dwParam & 0xFF) {
+		case 0xF0:
+		{
+			switch (dwParam & 0xFF)
+			{
 			case 0xF0:
 				strcat(Msg, "Start of SysEx Msg\n");
 				break;
@@ -619,9 +726,11 @@ void PrintEventToDebugLog(DWORD dwParam) {
 	}
 }
 
-void PrintLongMessageToDebugLog(MIDIHDR* IIMidiHdr) {
-	if (ManagedSettings.DebugMode) {
-		char* Msg = (char*)malloc(sizeof(char) * NTFS_MAX_PATH);
+void PrintLongMessageToDebugLog(MIDIHDR *IIMidiHdr)
+{
+	if (ManagedSettings.DebugMode)
+	{
+		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
 
 		// Debug log is busy now
 		std::lock_guard<std::mutex> lock(DebugMutex);
@@ -645,20 +754,19 @@ void PrintLongMessageToDebugLog(MIDIHDR* IIMidiHdr) {
 	}
 }
 
-
-static __declspec(noinline) void ToHex32(char* Target, DWORD val)
+static __declspec(noinline) void ToHex32(char *Target, DWORD val)
 {
 	sprintf(Target + strlen(Target), "%08X", val);
 }
 
-static __declspec(noinline) void ToHex64(char* Target, QWORD valin)
+static __declspec(noinline) void ToHex64(char *Target, QWORD valin)
 {
-	DWORD* valp = (DWORD*)& valin;
+	DWORD *valp = (DWORD *)&valin;
 	ToHex32(Target, valp[1]);
 	ToHex32(Target, valp[0]);
 }
 
-static __declspec(noinline) void WritePointer(char* Target, size_t valin)
+static __declspec(noinline) void WritePointer(char *Target, size_t valin)
 {
 	if (sizeof(valin) > 4)
 		ToHex64(Target, valin);
@@ -666,7 +774,8 @@ static __declspec(noinline) void WritePointer(char* Target, size_t valin)
 		ToHex32(Target, valin);
 }
 
-static BOOL IsExceptionValid(DWORD ex) {
+static BOOL IsExceptionValid(DWORD ex)
+{
 	switch (ex)
 	{
 	case EXCEPTION_ACCESS_VIOLATION:
@@ -695,22 +804,26 @@ static BOOL IsExceptionValid(DWORD ex) {
 	}
 }
 
-static LONG WINAPI OmniMIDICrashHandler(LPEXCEPTION_POINTERS exc) {
+static LONG WINAPI OmniMIDICrashHandler(LPEXCEPTION_POINTERS exc)
+{
 #ifdef _DEBUG
-	if (!IsExceptionValid(exc->ExceptionRecord->ExceptionCode)) return 0;
+	if (!IsExceptionValid(exc->ExceptionRecord->ExceptionCode))
+		return 0;
 
 	HANDLE CurrentProcess = GetCurrentProcess();
 	MEMORY_BASIC_INFORMATION MBI;
-	BYTE* StackTrace[USHRT_MAX];
-	DWORD ret = CaptureStackBackTrace(0, USHRT_MAX, (PVOID*)StackTrace, 0);
+	BYTE *StackTrace[USHRT_MAX];
+	DWORD ret = CaptureStackBackTrace(0, USHRT_MAX, (PVOID *)StackTrace, 0);
 
 	char MessageBuf[NTFS_MAX_PATH];
 	char NameBuf[NTFS_MAX_PATH];
 
 	sprintf(MessageBuf, "OmniMIDI or the host app has encountered a problem, and needs to be closed.\nHere are some information about the crash.\n\n");
-	if (ret) {
+	if (ret)
+	{
 		sprintf(MessageBuf + strlen(MessageBuf), "Stacktrace:");
-		while (ret--) {
+		while (ret--)
+		{
 			sprintf(MessageBuf + strlen(MessageBuf), "\n");
 			WritePointer(MessageBuf, (size_t)StackTrace[ret]);
 
@@ -726,12 +839,13 @@ static LONG WINAPI OmniMIDICrashHandler(LPEXCEPTION_POINTERS exc) {
 			sprintf(MessageBuf + strlen(MessageBuf), " (");
 			sprintf(MessageBuf + strlen(MessageBuf), NameBuf);
 			sprintf(MessageBuf + strlen(MessageBuf), "+");
-			ToHex32(MessageBuf, (DWORD)(StackTrace[ret] - (BYTE*)mod));
+			ToHex32(MessageBuf, (DWORD)(StackTrace[ret] - (BYTE *)mod));
 			sprintf(MessageBuf + strlen(MessageBuf), ")");
 		}
 		sprintf(MessageBuf + strlen(MessageBuf), "\n ");
 	}
-	else sprintf(MessageBuf + strlen(MessageBuf), " * The stacktrace is either empty or contains garbage data.\n\n");
+	else
+		sprintf(MessageBuf + strlen(MessageBuf), " * The stacktrace is either empty or contains garbage data.\n\n");
 
 	sprintf(MessageBuf + strlen(MessageBuf), "\nException:");
 
@@ -767,18 +881,22 @@ static LONG WINAPI OmniMIDICrashHandler(LPEXCEPTION_POINTERS exc) {
 	WritePointer(MessageBuf, (size_t)exc->ExceptionRecord->ExceptionAddress);
 	if (exc->ExceptionRecord->NumberParameters)
 	{
-		sprintf(MessageBuf + strlen(MessageBuf), "\nParam[0]: "); WritePointer(MessageBuf, exc->ExceptionRecord->ExceptionInformation[0]);
-		sprintf(MessageBuf + strlen(MessageBuf), "\nParam[1]: "); WritePointer(MessageBuf, exc->ExceptionRecord->ExceptionInformation[1]);
-		sprintf(MessageBuf + strlen(MessageBuf), "\nParam[2]: "); WritePointer(MessageBuf, exc->ExceptionRecord->ExceptionInformation[2]);
+		sprintf(MessageBuf + strlen(MessageBuf), "\nParam[0]: ");
+		WritePointer(MessageBuf, exc->ExceptionRecord->ExceptionInformation[0]);
+		sprintf(MessageBuf + strlen(MessageBuf), "\nParam[1]: ");
+		WritePointer(MessageBuf, exc->ExceptionRecord->ExceptionInformation[1]);
+		sprintf(MessageBuf + strlen(MessageBuf), "\nParam[2]: ");
+		WritePointer(MessageBuf, exc->ExceptionRecord->ExceptionInformation[2]);
 	}
 	sprintf(MessageBuf + strlen(MessageBuf), "\n\n");
 
 	sprintf(MessageBuf + strlen(MessageBuf), "Registers dump:");
 #ifdef _M_AMD64
-	sprintf(MessageBuf + strlen(MessageBuf), "\nPC : "); WritePointer(MessageBuf, exc->ContextRecord->Rip);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nPC : ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rip);
 	do
 	{
-		if (!VirtualQuery((BYTE*)exc->ContextRecord->Rip, &MBI, sizeof(MBI)))
+		if (!VirtualQuery((BYTE *)exc->ContextRecord->Rip, &MBI, sizeof(MBI)))
 			continue;
 
 		HMODULE mod = (HMODULE)MBI.AllocationBase;
@@ -790,81 +908,145 @@ static LONG WINAPI OmniMIDICrashHandler(LPEXCEPTION_POINTERS exc) {
 		sprintf(MessageBuf + strlen(MessageBuf), " (On address ");
 		sprintf(MessageBuf + strlen(MessageBuf), NameBuf);
 		sprintf(MessageBuf + strlen(MessageBuf), "+");
-		WritePointer(MessageBuf, (DWORD)((BYTE*)exc->ContextRecord->Rip - (BYTE*)mod));
+		WritePointer(MessageBuf, (DWORD)((BYTE *)exc->ContextRecord->Rip - (BYTE *)mod));
 		sprintf(MessageBuf + strlen(MessageBuf), ")");
 	} while (0);
 
-	sprintf(MessageBuf + strlen(MessageBuf), "\nRAX: "); WritePointer(MessageBuf, exc->ContextRecord->Rax);
-	sprintf(MessageBuf + strlen(MessageBuf), " RCX: "); WritePointer(MessageBuf, exc->ContextRecord->Rcx);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nRDX: "); WritePointer(MessageBuf, exc->ContextRecord->Rdx);
-	sprintf(MessageBuf + strlen(MessageBuf), " RBX: "); WritePointer(MessageBuf, exc->ContextRecord->Rbx);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nRSP: "); WritePointer(MessageBuf, exc->ContextRecord->Rsp);
-	sprintf(MessageBuf + strlen(MessageBuf), " RBP: "); WritePointer(MessageBuf, exc->ContextRecord->Rbp);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nRSI: "); WritePointer(MessageBuf, exc->ContextRecord->Rsi);
-	sprintf(MessageBuf + strlen(MessageBuf), " RDI: "); WritePointer(MessageBuf, exc->ContextRecord->Rdi);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nDR0: "); WritePointer(MessageBuf, exc->ContextRecord->Dr0);
-	sprintf(MessageBuf + strlen(MessageBuf), " DR1: "); WritePointer(MessageBuf, exc->ContextRecord->Dr1);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nDR2: "); WritePointer(MessageBuf, exc->ContextRecord->Dr2);
-	sprintf(MessageBuf + strlen(MessageBuf), " DR3: "); WritePointer(MessageBuf, exc->ContextRecord->Dr3);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nDR6: "); WritePointer(MessageBuf, exc->ContextRecord->Dr6);
-	sprintf(MessageBuf + strlen(MessageBuf), " DR7: "); WritePointer(MessageBuf, exc->ContextRecord->Dr7);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nR8 : "); WritePointer(MessageBuf, exc->ContextRecord->R8);
-	sprintf(MessageBuf + strlen(MessageBuf), " R9 : "); WritePointer(MessageBuf, exc->ContextRecord->R9);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nR10: "); WritePointer(MessageBuf, exc->ContextRecord->R10);
-	sprintf(MessageBuf + strlen(MessageBuf), " R11: "); WritePointer(MessageBuf, exc->ContextRecord->R11);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nR12: "); WritePointer(MessageBuf, exc->ContextRecord->R12);
-	sprintf(MessageBuf + strlen(MessageBuf), " R13: "); WritePointer(MessageBuf, exc->ContextRecord->R13);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nR14: "); WritePointer(MessageBuf, exc->ContextRecord->R14);
-	sprintf(MessageBuf + strlen(MessageBuf), " R15: "); WritePointer(MessageBuf, exc->ContextRecord->R15);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nLBT: "); WritePointer(MessageBuf, exc->ContextRecord->LastBranchToRip);
-	sprintf(MessageBuf + strlen(MessageBuf), " LBF: "); WritePointer(MessageBuf, exc->ContextRecord->LastBranchFromRip);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nLET: "); WritePointer(MessageBuf, exc->ContextRecord->LastExceptionToRip);
-	sprintf(MessageBuf + strlen(MessageBuf), " LEF: "); WritePointer(MessageBuf, exc->ContextRecord->LastExceptionFromRip);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nRAX: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rax);
+	sprintf(MessageBuf + strlen(MessageBuf), " RCX: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rcx);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nRDX: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rdx);
+	sprintf(MessageBuf + strlen(MessageBuf), " RBX: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rbx);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nRSP: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rsp);
+	sprintf(MessageBuf + strlen(MessageBuf), " RBP: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rbp);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nRSI: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rsi);
+	sprintf(MessageBuf + strlen(MessageBuf), " RDI: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Rdi);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nDR0: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Dr0);
+	sprintf(MessageBuf + strlen(MessageBuf), " DR1: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Dr1);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nDR2: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Dr2);
+	sprintf(MessageBuf + strlen(MessageBuf), " DR3: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Dr3);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nDR6: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Dr6);
+	sprintf(MessageBuf + strlen(MessageBuf), " DR7: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Dr7);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nR8 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->R8);
+	sprintf(MessageBuf + strlen(MessageBuf), " R9 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->R9);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nR10: ");
+	WritePointer(MessageBuf, exc->ContextRecord->R10);
+	sprintf(MessageBuf + strlen(MessageBuf), " R11: ");
+	WritePointer(MessageBuf, exc->ContextRecord->R11);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nR12: ");
+	WritePointer(MessageBuf, exc->ContextRecord->R12);
+	sprintf(MessageBuf + strlen(MessageBuf), " R13: ");
+	WritePointer(MessageBuf, exc->ContextRecord->R13);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nR14: ");
+	WritePointer(MessageBuf, exc->ContextRecord->R14);
+	sprintf(MessageBuf + strlen(MessageBuf), " R15: ");
+	WritePointer(MessageBuf, exc->ContextRecord->R15);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nLBT: ");
+	WritePointer(MessageBuf, exc->ContextRecord->LastBranchToRip);
+	sprintf(MessageBuf + strlen(MessageBuf), " LBF: ");
+	WritePointer(MessageBuf, exc->ContextRecord->LastBranchFromRip);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nLET: ");
+	WritePointer(MessageBuf, exc->ContextRecord->LastExceptionToRip);
+	sprintf(MessageBuf + strlen(MessageBuf), " LEF: ");
+	WritePointer(MessageBuf, exc->ContextRecord->LastExceptionFromRip);
 #else
 #ifdef _M_ARM64
-	sprintf(MessageBuf + strlen(MessageBuf), "\nPC : "); WritePointer(MessageBuf, exc->ContextRecord->Pc);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nLR : "); WritePointer(MessageBuf, exc->ContextRecord->Lr);
-	sprintf(MessageBuf + strlen(MessageBuf), " SP : "); WritePointer(MessageBuf, exc->ContextRecord->Sp);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nFP : "); WritePointer(MessageBuf, exc->ContextRecord->Fp);
-	sprintf(MessageBuf + strlen(MessageBuf), " CPS: "); WritePointer(MessageBuf, exc->ContextRecord->Cpsr);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nFPS: "); WritePointer(MessageBuf, exc->ContextRecord->Fpsr);
-	sprintf(MessageBuf + strlen(MessageBuf), " FPC: "); WritePointer(MessageBuf, exc->ContextRecord->Fpcr);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX0 : "); WritePointer(MessageBuf, exc->ContextRecord->X[0]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X1 : "); WritePointer(MessageBuf, exc->ContextRecord->X[1]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX2 : "); WritePointer(MessageBuf, exc->ContextRecord->X[2]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X3 : "); WritePointer(MessageBuf, exc->ContextRecord->X[3]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX4 : "); WritePointer(MessageBuf, exc->ContextRecord->X[4]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X5 : "); WritePointer(MessageBuf, exc->ContextRecord->X[5]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX6 : "); WritePointer(MessageBuf, exc->ContextRecord->X[6]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X7 : "); WritePointer(MessageBuf, exc->ContextRecord->X[7]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX8 : "); WritePointer(MessageBuf, exc->ContextRecord->X[8]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X9 : "); WritePointer(MessageBuf, exc->ContextRecord->X[9]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX10: "); WritePointer(MessageBuf, exc->ContextRecord->X[10]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X11: "); WritePointer(MessageBuf, exc->ContextRecord->X[11]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX12: "); WritePointer(MessageBuf, exc->ContextRecord->X[12]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X13: "); WritePointer(MessageBuf, exc->ContextRecord->X[13]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX14: "); WritePointer(MessageBuf, exc->ContextRecord->X[14]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X15: "); WritePointer(MessageBuf, exc->ContextRecord->X[15]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX16: "); WritePointer(MessageBuf, exc->ContextRecord->X[16]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X17: "); WritePointer(MessageBuf, exc->ContextRecord->X[17]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX18: "); WritePointer(MessageBuf, exc->ContextRecord->X[18]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X19: "); WritePointer(MessageBuf, exc->ContextRecord->X[19]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX20: "); WritePointer(MessageBuf, exc->ContextRecord->X[20]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X21: "); WritePointer(MessageBuf, exc->ContextRecord->X[21]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX22: "); WritePointer(MessageBuf, exc->ContextRecord->X[22]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X23: "); WritePointer(MessageBuf, exc->ContextRecord->X[23]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX24: "); WritePointer(MessageBuf, exc->ContextRecord->X[24]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X25: "); WritePointer(MessageBuf, exc->ContextRecord->X[25]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX26: "); WritePointer(MessageBuf, exc->ContextRecord->X[26]);
-	sprintf(MessageBuf + strlen(MessageBuf), " X27: "); WritePointer(MessageBuf, exc->ContextRecord->X[27]);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nX28: "); WritePointer(MessageBuf, exc->ContextRecord->X[28]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nPC : ");
+	WritePointer(MessageBuf, exc->ContextRecord->Pc);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nLR : ");
+	WritePointer(MessageBuf, exc->ContextRecord->Lr);
+	sprintf(MessageBuf + strlen(MessageBuf), " SP : ");
+	WritePointer(MessageBuf, exc->ContextRecord->Sp);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nFP : ");
+	WritePointer(MessageBuf, exc->ContextRecord->Fp);
+	sprintf(MessageBuf + strlen(MessageBuf), " CPS: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Cpsr);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nFPS: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Fpsr);
+	sprintf(MessageBuf + strlen(MessageBuf), " FPC: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Fpcr);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX0 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[0]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X1 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[1]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX2 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[2]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X3 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[3]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX4 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[4]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X5 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[5]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX6 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[6]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X7 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[7]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX8 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[8]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X9 : ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[9]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX10: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[10]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X11: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[11]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX12: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[12]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X13: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[13]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX14: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[14]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X15: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[15]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX16: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[16]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X17: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[17]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX18: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[18]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X19: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[19]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX20: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[20]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X21: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[21]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX22: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[22]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X23: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[23]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX24: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[24]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X25: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[25]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX26: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[26]);
+	sprintf(MessageBuf + strlen(MessageBuf), " X27: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[27]);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nX28: ");
+	WritePointer(MessageBuf, exc->ContextRecord->X[28]);
 #else
 #ifdef _M_IX86
-	sprintf(MessageBuf + strlen(MessageBuf), "\nPC : "); WritePointer(MessageBuf, exc->ContextRecord->Eip);
-	if (exc->ContextRecord->Eip) {
+	sprintf(MessageBuf + strlen(MessageBuf), "\nPC : ");
+	WritePointer(MessageBuf, exc->ContextRecord->Eip);
+	if (exc->ContextRecord->Eip)
+	{
 		do
 		{
-			if (!VirtualQuery((BYTE*)exc->ContextRecord->Eip, &MBI, sizeof(MBI)))
+			if (!VirtualQuery((BYTE *)exc->ContextRecord->Eip, &MBI, sizeof(MBI)))
 				continue;
 
 			HMODULE mod = (HMODULE)MBI.AllocationBase;
@@ -876,18 +1058,25 @@ static LONG WINAPI OmniMIDICrashHandler(LPEXCEPTION_POINTERS exc) {
 			sprintf(MessageBuf + strlen(MessageBuf), " (On address ");
 			sprintf(MessageBuf + strlen(MessageBuf), NameBuf);
 			sprintf(MessageBuf + strlen(MessageBuf), "+");
-			WritePointer(MessageBuf, (DWORD)((BYTE*)exc->ContextRecord->Eip - (BYTE*)mod));
+			WritePointer(MessageBuf, (DWORD)((BYTE *)exc->ContextRecord->Eip - (BYTE *)mod));
 			sprintf(MessageBuf + strlen(MessageBuf), ")");
 		} while (0);
 	}
 
-	sprintf(MessageBuf + strlen(MessageBuf), "\nEDI: "); WritePointer(MessageBuf, exc->ContextRecord->Edi);
-	sprintf(MessageBuf + strlen(MessageBuf), " ESI: "); WritePointer(MessageBuf, exc->ContextRecord->Esi);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nEBX: "); WritePointer(MessageBuf, exc->ContextRecord->Ebx);
-	sprintf(MessageBuf + strlen(MessageBuf), " EDX: "); WritePointer(MessageBuf, exc->ContextRecord->Edx);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nEXC: "); WritePointer(MessageBuf, exc->ContextRecord->Ecx);
-	sprintf(MessageBuf + strlen(MessageBuf), " EAX: "); WritePointer(MessageBuf, exc->ContextRecord->Eax);
-	sprintf(MessageBuf + strlen(MessageBuf), "\nEBP: "); WritePointer(MessageBuf, exc->ContextRecord->Ebp);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nEDI: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Edi);
+	sprintf(MessageBuf + strlen(MessageBuf), " ESI: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Esi);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nEBX: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Ebx);
+	sprintf(MessageBuf + strlen(MessageBuf), " EDX: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Edx);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nEXC: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Ecx);
+	sprintf(MessageBuf + strlen(MessageBuf), " EAX: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Eax);
+	sprintf(MessageBuf + strlen(MessageBuf), "\nEBP: ");
+	WritePointer(MessageBuf, exc->ContextRecord->Ebp);
 #else
 	sprintf(MessageBuf + strlen(MessageBuf), " * Registry dumps are not supported on this platform");
 #endif
@@ -902,11 +1091,14 @@ static LONG WINAPI OmniMIDICrashHandler(LPEXCEPTION_POINTERS exc) {
 	return EXCEPTION_EXECUTE_HANDLER;
 }
 
-BOOL EnableBuiltInHandler(LPCSTR Stage) {
+BOOL EnableBuiltInHandler(LPCSTR Stage)
+{
 #ifdef _DEBUG
-	if (ManagedSettings.DebugMode) {
+	if (ManagedSettings.DebugMode)
+	{
 		PrintMessageToDebugLog(Stage, "Initializing OmniMIDICrashHandler...");
-		if (NULL == (ExceptionHandler = AddVectoredExceptionHandler(1, OmniMIDICrashHandler))) {
+		if (NULL == (ExceptionHandler = AddVectoredExceptionHandler(1, OmniMIDICrashHandler)))
+		{
 			MessageBoxA(NULL, "An error has occured while initializing the built-in crash handler.", "OmniMIDI - ERROR", MB_ICONERROR | MB_OK | MB_SYSTEMMODAL);
 			return FALSE;
 		}
@@ -916,11 +1108,14 @@ BOOL EnableBuiltInHandler(LPCSTR Stage) {
 	return TRUE;
 }
 
-BOOL DisableBuiltInHandler(LPCSTR Stage) {
+BOOL DisableBuiltInHandler(LPCSTR Stage)
+{
 #ifdef _DEBUG
-	if (ExceptionHandler != nullptr) {
+	if (ExceptionHandler != nullptr)
+	{
 		PrintMessageToDebugLog(Stage, "Removing OmniMIDICrashHandler...");
-		if (!RemoveVectoredExceptionHandler(ExceptionHandler)) {
+		if (!RemoveVectoredExceptionHandler(ExceptionHandler))
+		{
 			throw;
 		}
 	}
@@ -929,20 +1124,23 @@ BOOL DisableBuiltInHandler(LPCSTR Stage) {
 	return TRUE;
 }
 
-void StartDebugPipe(BOOL RestartingPipe) {
+void StartDebugPipe(BOOL RestartingPipe)
+{
 	// Initialize the current pipe count and template
 	unsigned int PipeVal = 1;
 	wchar_t PipeDes[MAX_PATH];
 
-	if (RestartingPipe) {
+	if (RestartingPipe)
+	{
 		FlushFileBuffers(hPipe);
 		CloseHandle(hPipe);
 		hPipe = NULL;
 	}
 
 Retry:
-	while (!hPipe || hPipe == INVALID_HANDLE_VALUE) {
-		// Clear the WCHAR, since it might contain garbage, 
+	while (!hPipe || hPipe == INVALID_HANDLE_VALUE)
+	{
+		// Clear the WCHAR, since it might contain garbage,
 		// and print the template with PipeVal in it
 		// (Ex. "\\\\.\\pipe\\OmniMIDIDbg1")
 		ZeroMemory(PipeDes, MAX_PATH);
@@ -950,13 +1148,13 @@ Retry:
 
 		// Now create the pipe
 		hPipe = CreateNamedPipeW(PipeDes,
-			PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
-			PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-			PIPE_UNLIMITED_INSTANCES,
-			NTFS_MAX_PATH,
-			NTFS_MAX_PATH,
-			NMPWAIT_USE_DEFAULT_WAIT,
-			NULL);
+								 PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
+								 PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+								 PIPE_UNLIMITED_INSTANCES,
+								 NTFS_MAX_PATH,
+								 NTFS_MAX_PATH,
+								 NMPWAIT_USE_DEFAULT_WAIT,
+								 NULL);
 
 		// Check if the pipe failed to be initialized
 		if (!hPipe || hPipe == INVALID_HANDLE_VALUE)
@@ -970,12 +1168,15 @@ Retry:
 	}
 }
 
-MMRESULT DebugResult(LPCSTR Stage, MMRESULT ErrorToDisplay, LPCSTR ExactError) {
-	if (!ErrorToDisplay) return MMSYSERR_NOERROR;
+MMRESULT DebugResult(LPCSTR Stage, MMRESULT ErrorToDisplay, LPCSTR ExactError)
+{
+	if (!ErrorToDisplay)
+		return MMSYSERR_NOERROR;
 
-	CHAR ErrorString[NTFS_MAX_PATH] = { 0 };
-	
-	switch (ErrorToDisplay) {
+	CHAR ErrorString[NTFS_MAX_PATH] = {0};
+
+	switch (ErrorToDisplay)
+	{
 		CurrentError(ErrorString, MMSYSERR_NOMEM, "The system is unable to allocate or lock memory.");
 		CurrentError(ErrorString, MMSYSERR_ALLOCATED, "The driver has been already allocated in a previous InitializeKDMAPIStream/midiStreamOpen/midiOutOpen call.");
 		CurrentError(ErrorString, MMSYSERR_MOREDATA, "The driver has more data to return, but the MIDI application won't let it return data quickly enough.");
@@ -993,13 +1194,16 @@ MMRESULT DebugResult(LPCSTR Stage, MMRESULT ErrorToDisplay, LPCSTR ExactError) {
 		DefError(ErrorString, MMSYSERR_ERROR, "Unspecified error.");
 	}
 
-	if (ExactError) {
+	if (ExactError)
+	{
 		strcat(ErrorString, "\n\nCause: ");
 		strcat(ErrorString, ExactError);
 	}
 
-	if (ManagedSettings.DebugMode || ErrorToDisplay == MMSYSERR_ALLOCATED) {
-		if (ManagedSettings.DebugMode) strcat(ErrorString, "\n\nIf you're the developer of this app, please check if all the MIDI calls have been done correctly.");
+	if (ManagedSettings.DebugMode || ErrorToDisplay == MMSYSERR_ALLOCATED)
+	{
+		if (ManagedSettings.DebugMode)
+			strcat(ErrorString, "\n\nIf you're the developer of this app, please check if all the MIDI calls have been done correctly.");
 		PrintMessageToDebugLog(Stage, ErrorString);
 		MessageBoxA(NULL, ErrorString, "OmniMIDI - WinMM API/KDMAPI ERROR", MB_OK | MB_ICONHAND | MB_SYSTEMMODAL);
 	}

@@ -1,17 +1,24 @@
 /*
-OmniMIDI Audio Bus V2 - Shared memory for Permafrost
+OmniMIDI Audio Bus - Version 2.0
+Shared memory interface for Permafrost integration
 
-TL;DR:
+This creates a shared memory region that Permafrost can read/write:
+- Real-time audio levels (per-channel and master)
+- Voice counts per channel
+- Panic/reset flags
+- 16-channel audio OUT (OmniMIDI -> Permafrost)
+- Stereo audio IN (Permafrost -> OmniMIDI, processed mix)
 
-Permafrost can read/write:
-- Audio levels (per-channel + master)
-- Voice counts
-- Panic flags
-- 16ch audio OUT (we send to Permafrost)
-- Stereo IN (Permafrost sends back after VST processing)
+The roundtrip architecture keeps all VST/effects code in Permafrost
+while OmniMIDI handles synthesis and final audio output.
 
-Audio goes: MIDI -> synthesis -> 16ch out -> Permafrost does VST stuff -> stereo back -> speakers
-If Permafrost isn't there, we just output directly. No drama.
+Audio Flow:
+  MIDI -> OmniMIDI synthesis -> 16ch to SharedMem
+  -> Permafrost VST processing -> Stereo back to SharedMem
+  -> OmniMIDI output to speakers
+
+When Permafrost isn't running or takeover isn't active, OmniMIDI
+outputs directly (fallback mode) with no latency penalty.
 */
 #pragma once
 
@@ -19,7 +26,9 @@ If Permafrost isn't there, we just output directly. No drama.
 #include <stdio.h>
 #include <math.h>
 
-// Config
+// ============================================================
+// CONFIGURATION
+// ============================================================
 
 // Shared memory names - Permafrost connects to these
 #define AUDIOBUS_SHARED_MEM_NAME L"OmniMIDI_AudioBus"
@@ -53,7 +62,9 @@ static DWORD g_ConfiguredBufferSamples = AUDIOBUS_DEFAULT_BUFFER_SAMPLES;
 // Peak level decay rate (makes the meters smooth)
 #define AUDIOBUS_LEVEL_DECAY 0.92f
 
-// Flags and enums
+// ============================================================
+// FLAGS AND ENUMS
+// ============================================================
 
 // Flags for the shared memory header
 #define AUDIOBUS_FLAG_ACTIVE 0x0001        // OmniMIDI is running and streaming
@@ -71,7 +82,9 @@ typedef enum AudioBusTakeoverState
     TAKEOVER_RELEASING = 3 // Returning to direct mode, finishing current frame
 } AudioBusTakeoverState;
 
-// Data structures
+// ============================================================
+// DATA STRUCTURES
+// ============================================================
 
 #pragma pack(push, 1)
 
@@ -149,11 +162,14 @@ typedef struct AudioBusHeader
 
 } AudioBusHeader;
 
-// Audio buffer regions
-// Each buffer holds AUDIOBUS_BUFFER_SAMPLES of stereo float data
+// ============================================================
+// AUDIO BUFFER REGIONS
+// Each buffer holds up to AUDIOBUS_MAX_BUFFER_SAMPLES of stereo float data
 // Double-buffered: A and B for lock-free operation
+// Memory is allocated for MAX size, but BufferSize in header controls actual usage
+// ============================================================
 
-// Size of one channel's stereo buffer
+// Size of one channel's stereo buffer (allocated for max)
 #define AUDIOBUS_CHANNEL_BUFFER_SIZE (AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO * AUDIOBUS_SAMPLE_SIZE)
 
 // 16-channel OUT region (OmniMIDI -> Permafrost)
@@ -164,7 +180,7 @@ typedef struct AudioBusHeader
 // Layout: [Stereo BufferA][Stereo BufferB]
 #define AUDIOBUS_IN_BUFFER_SIZE (2 * AUDIOBUS_CHANNEL_BUFFER_SIZE)
 
-// Total shared memory size
+// Total shared memory size (allocated for max buffer size)
 #define AUDIOBUS_HEADER_SIZE sizeof(AudioBusHeader)
 #define AUDIOBUS_TOTAL_SIZE (AUDIOBUS_HEADER_SIZE + AUDIOBUS_OUT_BUFFER_SIZE + AUDIOBUS_IN_BUFFER_SIZE)
 
@@ -174,7 +190,9 @@ typedef struct AudioBusHeader
 
 #pragma pack(pop)
 
-// Global state
+// ============================================================
+// GLOBAL STATE
+// ============================================================
 
 static HANDLE g_AudioBusMapping = NULL;
 static BYTE *g_AudioBusBasePtr = NULL;       // Base pointer to mapped memory
@@ -202,13 +220,10 @@ static float g_MasterPeakR = 0.0f;
 // QPC frequency cache
 static ULONGLONG g_QPCFrequency = 0;
 
-// Temporary buffer for accumulating channel audio before write
-static float g_ChannelAccumBuffer[AUDIOBUS_NUM_CHANNELS][AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO] = {0};
-static DWORD g_ChannelAccumSamples[AUDIOBUS_NUM_CHANNELS] = {0};
+// ============================================================
+// HELPERS
+// ============================================================
 
-// Helper functions
-
-// Get current QPC timestamp
 static inline ULONGLONG AudioBus_GetQPCTicks()
 {
     LARGE_INTEGER counter;
@@ -216,7 +231,6 @@ static inline ULONGLONG AudioBus_GetQPCTicks()
     return counter.QuadPart;
 }
 
-// Convert QPC ticks to microseconds
 static inline ULONGLONG AudioBus_TicksToMicroseconds(ULONGLONG ticks)
 {
     if (g_QPCFrequency == 0)
@@ -224,7 +238,6 @@ static inline ULONGLONG AudioBus_TicksToMicroseconds(ULONGLONG ticks)
     return (ticks * 1000000ULL) / g_QPCFrequency;
 }
 
-// Read configured buffer size from registry
 static DWORD AudioBus_ReadBufferSizeFromRegistry()
 {
     DWORD bufferSize = AUDIOBUS_DEFAULT_BUFFER_SAMPLES;
@@ -238,7 +251,7 @@ static DWORD AudioBus_ReadBufferSizeFromRegistry()
         RegCloseKey(hKey);
     }
 
-    // Clamp to valid range (128 to max)
+    // Clamp to sane range
     if (bufferSize < 128)
         bufferSize = 128;
     if (bufferSize > AUDIOBUS_MAX_BUFFER_SAMPLES)
@@ -247,7 +260,7 @@ static DWORD AudioBus_ReadBufferSizeFromRegistry()
     return bufferSize;
 }
 
-// Get the current configured buffer size (from header, not compile-time constant)
+// Returns runtime buffer size (from shared mem header, with fallback)
 static inline DWORD AudioBus_GetBufferSamples()
 {
     if (g_AudioBusPtr && g_AudioBusPtr->BufferSize > 0 && g_AudioBusPtr->BufferSize <= AUDIOBUS_MAX_BUFFER_SAMPLES)
@@ -255,61 +268,49 @@ static inline DWORD AudioBus_GetBufferSamples()
     return g_ConfiguredBufferSamples;
 }
 
-// Get pointer to specific channel's buffer (A or B)
+// Buffer layout: [Ch0_A][Ch0_B][Ch1_A][Ch1_B]...
+// Memory allocated for MAX size, actual usage determined by BufferSize
 static inline float *AudioBus_GetOutChannelBuffer(int channel, int bufferIndex)
 {
     if (!g_AudioBusOutPtr || channel < 0 || channel >= AUDIOBUS_NUM_CHANNELS)
         return NULL;
 
-    // Each channel has 2 buffers (A and B), each with MAX_BUFFER_SAMPLES * 2 floats (for offset calculation)
-    // The actual data used is determined by BufferSize in header
     int channelOffset = channel * 2 * (AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO);
     int bufferOffset = bufferIndex * (AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO);
 
     return g_AudioBusOutPtr + channelOffset + bufferOffset;
 }
 
-// Get pointer to stereo IN buffer (A or B)
 static inline float *AudioBus_GetInBuffer(int bufferIndex)
 {
     if (!g_AudioBusInPtr)
         return NULL;
 
-    // Use max buffer size for offset calculation (memory is allocated for max)
     int bufferOffset = bufferIndex * (AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO);
     return g_AudioBusInPtr + bufferOffset;
 }
 
-// Forward declarations
+// ============================================================
+// FORWARD DECLARATIONS
+// ============================================================
 
-// Core lifecycle
 static BOOL AudioBus_Create();
 static void AudioBus_Destroy();
 static BOOL AudioBus_IsConnected();
-
-// Level updates (existing, still used)
 static void AudioBus_UpdateLevels(float masterL, float masterR, DWORD totalVoices, float cpuUsage);
 static void AudioBus_UpdateChannelVoices(int channel, DWORD voiceCount);
 static void AudioBus_UpdateChannelLevels(int channel, float peakL, float peakR);
 static void AudioBus_UpdateAllChannelVoices(DWORD *voiceCounts);
-
-// Panic handling
 static BOOL AudioBus_CheckPanicRequest();
 static void AudioBus_AcknowledgePanic();
 static void AudioBus_RequestPanic();
 static void AudioBus_ClearPanicAck();
-
-// Config
 static void AudioBus_SetSampleRate(DWORD sampleRate);
 static DWORD AudioBus_GetFlags();
-
-// Timestamps
 static void AudioBus_RecordMidiEvent();
 static void AudioBus_RecordSynthComplete();
 static void AudioBus_RecordAudioOutput();
 static void AudioBus_UpdateLatencyInfo(DWORD outputLatencyUs, DWORD asioInputLatencyUs, DWORD engine);
-
-// Sprint 1: Audio streaming
 static BOOL AudioBus_SetupChannelDSPs(HSTREAM midiStream);
 static void AudioBus_RemoveChannelDSPs();
 static BOOL AudioBus_IsTakeoverActive();
@@ -323,9 +324,10 @@ static BOOL AudioBus_WaitForProcessedAudio(DWORD timeoutMs);
 static void AudioBus_IncrementHeartbeat();
 static BOOL AudioBus_CheckPermafrostAlive();
 
-// Core lifecycle
+// ============================================================
+// CORE LIFECYCLE
+// ============================================================
 
-// Set up shared memory + events. Call at init time.
 static BOOL AudioBus_Create()
 {
     if (g_AudioBusInitialized)
@@ -336,12 +338,10 @@ static BOOL AudioBus_Create()
 
     PrintMessageToDebugLog("AudioBus", "Creating shared memory for Permafrost integration...");
 
-    // Get QPC frequency
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
     g_QPCFrequency = freq.QuadPart;
 
-    // Create mutex for synchronization
     g_AudioBusMutex = CreateMutexW(NULL, FALSE, AUDIOBUS_MUTEX_NAME);
     if (g_AudioBusMutex == NULL)
     {
@@ -352,7 +352,6 @@ static BOOL AudioBus_Create()
         return FALSE;
     }
 
-    // Create the shared memory mapping (larger now with audio buffers)
     g_AudioBusMapping = CreateFileMappingW(
         INVALID_HANDLE_VALUE,
         NULL,
@@ -372,7 +371,6 @@ static BOOL AudioBus_Create()
         return FALSE;
     }
 
-    // Map into our address space
     g_AudioBusBasePtr = (BYTE *)MapViewOfFile(
         g_AudioBusMapping,
         FILE_MAP_ALL_ACCESS,
@@ -392,12 +390,11 @@ static BOOL AudioBus_Create()
         return FALSE;
     }
 
-    // Set up region pointers
     g_AudioBusPtr = (AudioBusHeader *)g_AudioBusBasePtr;
     g_AudioBusOutPtr = (float *)(g_AudioBusBasePtr + AUDIOBUS_OUT_OFFSET);
     g_AudioBusInPtr = (float *)(g_AudioBusBasePtr + AUDIOBUS_IN_OFFSET);
 
-    // Create sync events (auto-reset for clean signaling)
+    // Auto-reset events for clean signaling
     wchar_t eventName[128];
     DWORD pid = GetCurrentProcessId();
 
@@ -427,15 +424,11 @@ static BOOL AudioBus_Create()
         return FALSE;
     }
 
-    // Read configured buffer size from registry
     g_ConfiguredBufferSamples = AudioBus_ReadBufferSizeFromRegistry();
 
-    // Initialize header
     WaitForSingleObject(g_AudioBusMutex, INFINITE);
-
     memset(g_AudioBusBasePtr, 0, AUDIOBUS_TOTAL_SIZE);
 
-    // Magic bytes
     g_AudioBusPtr->Magic[0] = 'O';
     g_AudioBusPtr->Magic[1] = 'M';
     g_AudioBusPtr->Magic[2] = 'A';
@@ -444,18 +437,15 @@ static BOOL AudioBus_Create()
     g_AudioBusPtr->Version = AUDIOBUS_VERSION;
     g_AudioBusPtr->ProcessID = pid;
     g_AudioBusPtr->SampleRate = ManagedSettings.AudioFrequency;
-    g_AudioBusPtr->BufferSize = g_ConfiguredBufferSamples; // Configured buffer size from registry
+    g_AudioBusPtr->BufferSize = g_ConfiguredBufferSamples;
     g_AudioBusPtr->NumChannels = AUDIOBUS_NUM_CHANNELS;
     g_AudioBusPtr->Flags = AUDIOBUS_FLAG_ACTIVE;
     g_AudioBusPtr->TakeoverState = TAKEOVER_DIRECT;
     g_AudioBusPtr->HeartbeatCounter = 0;
     g_AudioBusPtr->Timestamp = GetTickCount64();
 
-    // QPC stuff
     g_AudioBusPtr->QPCFrequency = g_QPCFrequency;
     g_AudioBusPtr->CurrentEngine = ManagedSettings.CurrentEngine;
-
-    // Buffer indices start at 0
     g_AudioBusPtr->OutWriteIndex = 0;
     g_AudioBusPtr->OutReadIndex = 0;
     g_AudioBusPtr->InWriteIndex = 0;
@@ -463,7 +453,6 @@ static BOOL AudioBus_Create()
     g_AudioBusPtr->OutFrameCounter = 0;
     g_AudioBusPtr->InFrameCounter = 0;
 
-    // Init channel info
     for (int i = 0; i < AUDIOBUS_NUM_CHANNELS; i++)
     {
         g_AudioBusPtr->Channels[i].PeakLevelL = 0.0f;
@@ -483,7 +472,6 @@ static BOOL AudioBus_Create()
     return TRUE;
 }
 
-// Tear down shared memory
 static void AudioBus_Destroy()
 {
     if (!g_AudioBusInitialized)
@@ -491,10 +479,8 @@ static void AudioBus_Destroy()
 
     PrintMessageToDebugLog("AudioBus", "Destroying shared memory...");
 
-    // Remove any active DSPs first
     AudioBus_RemoveChannelDSPs();
 
-    // Mark as inactive
     if (g_AudioBusPtr && g_AudioBusMutex)
     {
         WaitForSingleObject(g_AudioBusMutex, 100);
@@ -503,7 +489,6 @@ static void AudioBus_Destroy()
         ReleaseMutex(g_AudioBusMutex);
     }
 
-    // Close events
     if (g_AudioReadyEvent)
     {
         CloseHandle(g_AudioReadyEvent);
@@ -515,7 +500,6 @@ static void AudioBus_Destroy()
         g_ProcessedReadyEvent = NULL;
     }
 
-    // Unmap and close handles
     if (g_AudioBusBasePtr)
     {
         UnmapViewOfFile(g_AudioBusBasePtr);
@@ -549,7 +533,7 @@ static BOOL AudioBus_IsConnected()
 }
 
 // ============================================================
-// IMPLEMENTATION: LEVEL UPDATES
+// LEVEL UPDATES
 // ============================================================
 
 static void AudioBus_UpdateLevels(float masterL, float masterR, DWORD totalVoices, float cpuUsage)
@@ -557,7 +541,7 @@ static void AudioBus_UpdateLevels(float masterL, float masterR, DWORD totalVoice
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
         return;
 
-    // Smoothing
+    // Decay smoothing for nice meter falloff
     if (masterL > g_MasterPeakL)
         g_MasterPeakL = masterL;
     else
@@ -568,7 +552,7 @@ static void AudioBus_UpdateLevels(float masterL, float masterR, DWORD totalVoice
     else
         g_MasterPeakR *= AUDIOBUS_LEVEL_DECAY;
 
-    // Quick non-blocking write
+    // Non-blocking - skip if mutex busy (level updates aren't critical)
     if (WaitForSingleObject(g_AudioBusMutex, 0) == WAIT_OBJECT_0)
     {
         g_AudioBusPtr->MasterPeakL = g_MasterPeakL;
@@ -601,7 +585,6 @@ static void AudioBus_UpdateChannelLevels(int channel, float peakL, float peakR)
     if (channel < 0 || channel >= AUDIOBUS_NUM_CHANNELS)
         return;
 
-    // Smoothing
     if (peakL > g_ChannelPeaksL[channel])
         g_ChannelPeaksL[channel] = peakL;
     else
@@ -639,7 +622,7 @@ static void AudioBus_UpdateAllChannelVoices(DWORD *voiceCounts)
 }
 
 // ============================================================
-// IMPLEMENTATION: PANIC HANDLING
+// PANIC HANDLING - all notes off on demand from Permafrost
 // ============================================================
 
 static BOOL AudioBus_CheckPanicRequest()
@@ -696,7 +679,7 @@ static void AudioBus_ClearPanicAck()
 }
 
 // ============================================================
-// IMPLEMENTATION: CONFIG
+// CONFIG
 // ============================================================
 
 static void AudioBus_SetSampleRate(DWORD sampleRate)
@@ -730,14 +713,13 @@ static DWORD AudioBus_GetFlags()
 }
 
 // ============================================================
-// IMPLEMENTATION: TIMESTAMPS
+// LATENCY TIMESTAMPS - for roundtrip measurement
 // ============================================================
 
 static void AudioBus_RecordMidiEvent()
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
         return;
-    // No mutex - atomic write
     g_AudioBusPtr->LastMidiEventTime = AudioBus_GetQPCTicks();
 }
 
@@ -770,16 +752,16 @@ static void AudioBus_UpdateLatencyInfo(DWORD outputLatencyUs, DWORD asioInputLat
 }
 
 // ============================================================
-// IMPLEMENTATION: SPRINT 1 - AUDIO STREAMING
+// AUDIO STREAMING - per-channel capture and roundtrip
 // ============================================================
 
-// DSP callback - BASS calls this for each channel's audio (stereo floats)
+// BASS calls this for each MIDI channel. We grab the audio
+// and toss it into shared memory for Permafrost to munch on.
 void CALLBACK AudioBus_ChannelDSPCallback(HDSP handle, DWORD channel, void *buffer, DWORD length, void *user)
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
         return;
 
-    // Only capture when takeover is active
     if (g_AudioBusPtr->TakeoverState != TAKEOVER_ACTIVE)
         return;
 
@@ -788,9 +770,9 @@ void CALLBACK AudioBus_ChannelDSPCallback(HDSP handle, DWORD channel, void *buff
         return;
 
     float *samples = (float *)buffer;
-    DWORD sampleCount = length / sizeof(float); // Total floats (stereo pairs)
+    DWORD sampleCount = length / sizeof(float);
 
-    // Also update peak levels while we're here
+    // Grab peak levels while we're looping anyway
     float peakL = 0.0f, peakR = 0.0f;
     for (DWORD i = 0; i < sampleCount; i += 2)
     {
@@ -803,20 +785,18 @@ void CALLBACK AudioBus_ChannelDSPCallback(HDSP handle, DWORD channel, void *buff
     }
     AudioBus_UpdateChannelLevels(chIndex, peakL, peakR);
 
-    // Copy to the current OUT buffer
-    int writeIndex = g_AudioBusPtr->OutWriteIndex & 1; // 0 or 1
+    int writeIndex = g_AudioBusPtr->OutWriteIndex & 1;
     float *destBuffer = AudioBus_GetOutChannelBuffer(chIndex, writeIndex);
-
     if (destBuffer)
     {
-        // Copy the samples (might be less than full buffer)
         DWORD bufSamples = AudioBus_GetBufferSamples();
         DWORD copyCount = min(sampleCount, bufSamples * AUDIOBUS_STEREO);
         memcpy(destBuffer, samples, copyCount * sizeof(float));
     }
 }
 
-// Hook DSPs on all 16 channels - call after MIDI stream is up
+// Hooks DSP callbacks onto all 16 MIDI channels.
+// Call this after BASS_MIDI_StreamCreate.
 static BOOL AudioBus_SetupChannelDSPs(HSTREAM midiStream)
 {
     if (!g_AudioBusInitialized || !midiStream)
@@ -833,19 +813,15 @@ static BOOL AudioBus_SetupChannelDSPs(HSTREAM midiStream)
     int setupCount = 0;
     for (int ch = 0; ch < AUDIOBUS_NUM_CHANNELS; ch++)
     {
-        // Get the channel stream handle from BASSMIDI
         HSTREAM chanStream = BASS_MIDI_StreamGetChannel(midiStream, ch);
         if (!chanStream)
         {
-            // Channel might not be active yet, that's okay
             g_ChannelStreams[ch] = 0;
             g_ChannelDSPHandles[ch] = 0;
             continue;
         }
 
         g_ChannelStreams[ch] = chanStream;
-
-        // Set up DSP callback with channel index as user data
         HDSP dsp = BASS_ChannelSetDSP(chanStream, AudioBus_ChannelDSPCallback, (void *)(intptr_t)ch, 0);
         if (dsp)
         {
@@ -870,7 +846,6 @@ static BOOL AudioBus_SetupChannelDSPs(HSTREAM midiStream)
     return setupCount > 0;
 }
 
-// Unhook all channel DSPs
 static void AudioBus_RemoveChannelDSPs()
 {
     if (!g_ChannelDSPActive)
@@ -891,12 +866,10 @@ static void AudioBus_RemoveChannelDSPs()
     g_ChannelDSPActive = FALSE;
 }
 
-// Is Permafrost currently handling our audio?
 static BOOL AudioBus_IsTakeoverActive()
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
         return FALSE;
-
     return g_AudioBusPtr->TakeoverState == TAKEOVER_ACTIVE;
 }
 
@@ -904,11 +877,10 @@ static AudioBusTakeoverState AudioBus_GetTakeoverState()
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
         return TAKEOVER_DIRECT;
-
     return g_AudioBusPtr->TakeoverState;
 }
 
-// Permafrost wants to take over - go DIRECT -> PENDING
+// Permafrost calls this when it wants to take over audio routing
 static void AudioBus_RequestTakeover()
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
@@ -926,7 +898,6 @@ static void AudioBus_RequestTakeover()
     }
 }
 
-// Give audio back to direct output
 static void AudioBus_ReleaseTakeover()
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
@@ -944,37 +915,32 @@ static void AudioBus_ReleaseTakeover()
     }
 }
 
-// Frame boundary - handle state changes and swap buffers
+// State machine for takeover transitions. Called at frame boundaries
+// to avoid switching mid-frame and causing glitches.
 static void AudioBus_ProcessFrameBoundary()
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
         return;
 
-    // Handle state transitions at frame boundary
     AudioBusTakeoverState state = g_AudioBusPtr->TakeoverState;
 
     if (state == TAKEOVER_PENDING)
     {
-        // Permafrost is ready, switch to active
         g_AudioBusPtr->TakeoverState = TAKEOVER_ACTIVE;
         PrintMessageToDebugLog("AudioBus", "Takeover active - state: ACTIVE");
     }
     else if (state == TAKEOVER_RELEASING)
     {
-        // Finish current frame, return to direct
         g_AudioBusPtr->TakeoverState = TAKEOVER_DIRECT;
         g_AudioBusPtr->Flags &= ~AUDIOBUS_FLAG_AUDIO_ENABLED;
         PrintMessageToDebugLog("AudioBus", "Takeover released - state: DIRECT");
     }
 }
 
-// Flip to next OUT buffer
 static void AudioBus_SwapOutBuffer()
 {
     if (!g_AudioBusPtr)
         return;
-
-    // Atomic swap: 0->1 or 1->0
     InterlockedExchange(&g_AudioBusPtr->OutWriteIndex,
                         (g_AudioBusPtr->OutWriteIndex + 1) & 1);
     InterlockedIncrement64((volatile LONG64 *)&g_AudioBusPtr->OutFrameCounter);
@@ -982,16 +948,12 @@ static void AudioBus_SwapOutBuffer()
     g_AudioBusPtr->LastSharedMemWriteTime = AudioBus_GetQPCTicks();
 }
 
-// Tell Permafrost we've got a frame ready
 static void AudioBus_SignalAudioReady()
 {
     if (g_AudioReadyEvent)
-    {
         SetEvent(g_AudioReadyEvent);
-    }
 }
 
-// Wait for Permafrost to finish processing (FALSE = timeout)
 static BOOL AudioBus_WaitForProcessedAudio(DWORD timeoutMs)
 {
     if (!g_ProcessedReadyEvent)
@@ -1001,8 +963,8 @@ static BOOL AudioBus_WaitForProcessedAudio(DWORD timeoutMs)
     return result == WAIT_OBJECT_0;
 }
 
-// Grab processed audio from Permafrost
-// They write to InWriteIndex then swap, so we read the opposite buffer
+// Grabs processed stereo from Permafrost. Reads from the buffer
+// opposite of InWriteIndex (the one Permafrost just finished).
 static BOOL AudioBus_ReadProcessedAudio(float *buffer, DWORD sampleCount)
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr || !g_AudioBusInPtr || !buffer)
@@ -1017,17 +979,16 @@ static BOOL AudioBus_ReadProcessedAudio(float *buffer, DWORD sampleCount)
     if (!srcBuffer)
         return FALSE;
 
-    // Copy the samples
-    DWORD bufSamples = AudioBus_GetBufferSamples();
-    DWORD copyCount = min(sampleCount * AUDIOBUS_STEREO, bufSamples * AUDIOBUS_STEREO);
-    memcpy(buffer, srcBuffer, copyCount * sizeof(float));
+    DWORD copyFloats = sampleCount * AUDIOBUS_STEREO;
+    if (copyFloats > AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO)
+        copyFloats = AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO;
+    memcpy(buffer, srcBuffer, copyFloats * sizeof(float));
 
     g_AudioBusPtr->LastSharedMemReadTime = AudioBus_GetQPCTicks();
 
     return TRUE;
 }
 
-// Bump heartbeat (call each frame)
 static void AudioBus_IncrementHeartbeat()
 {
     if (!g_AudioBusPtr)
@@ -1035,19 +996,16 @@ static void AudioBus_IncrementHeartbeat()
     InterlockedIncrement64((volatile LONG64 *)&g_AudioBusPtr->HeartbeatCounter);
 }
 
-// Did Permafrost crash? Check if frame counters are drifting
+// If we've sent way more frames than we got back, Permafrost is
+// either dead or too slow. Bail out and go back to direct output.
 static BOOL AudioBus_CheckPermafrostAlive()
 {
     if (!g_AudioBusPtr || g_AudioBusPtr->TakeoverState != TAKEOVER_ACTIVE)
-        return TRUE; // Not in takeover mode, don't check
+        return TRUE;
 
-    // Compare OUT and IN frame counters
-    // If we've written many more frames than we've received back,
-    // Permafrost is probably not processing
     ULONGLONG outFrames = g_AudioBusPtr->OutFrameCounter;
     ULONGLONG inFrames = g_AudioBusPtr->InFrameCounter;
 
-    // Allow up to 3 frames of drift (for buffering)
     if (outFrames > inFrames + 3)
     {
         PrintMessageToDebugLog("AudioBus", "Permafrost appears unresponsive, releasing takeover");
@@ -1058,35 +1016,30 @@ static BOOL AudioBus_CheckPermafrostAlive()
     return TRUE;
 }
 
-// Main roundtrip handler - returns TRUE if audio went through Permafrost, FALSE for direct out
+// Called from ProcData each frame. Does the handshake with Permafrost:
+// 1. Swap buffers (DSP callbacks already filled them)
+// 2. Signal Permafrost that audio is ready
+// 3. Wait for Permafrost to process and signal back
+// Returns TRUE if roundtrip succeeded, FALSE means use direct output.
 static BOOL AudioBus_ProcessAudioFrame()
 {
     if (!g_AudioBusInitialized || !g_AudioBusPtr)
         return FALSE;
 
-    // Handle frame boundary state transitions
     AudioBus_ProcessFrameBoundary();
-
-    // Increment heartbeat
     AudioBus_IncrementHeartbeat();
 
-    // Check if takeover is active
     if (!AudioBus_IsTakeoverActive())
         return FALSE;
 
-    // Check if Permafrost is still alive
     if (!AudioBus_CheckPermafrostAlive())
         return FALSE;
 
-    // At this point, DSP callbacks have filled the channel buffers
-    // Swap to next buffer and signal Permafrost
     AudioBus_SwapOutBuffer();
     AudioBus_SignalAudioReady();
 
-    // Wait for processed audio (with timeout for crash safety)
     if (!AudioBus_WaitForProcessedAudio(AUDIOBUS_FRAME_TIMEOUT_MS))
     {
-        // Timeout! Permafrost is too slow or crashed
         PrintMessageToDebugLog("AudioBus", "Timeout waiting for processed audio");
         AudioBus_ReleaseTakeover();
         return FALSE;
@@ -1094,5 +1047,3 @@ static BOOL AudioBus_ProcessAudioFrame()
 
     return TRUE;
 }
-
-// Frozy is still here.

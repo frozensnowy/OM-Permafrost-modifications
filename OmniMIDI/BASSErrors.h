@@ -1,210 +1,372 @@
 /*
-OmniMIDI errors list
+BASS Error Handling
+Maps BASS error codes to human-readable messages and suggested fixes.
+Fixes cringy code.
 */
 #pragma once
 
-#define Case(Error) case Error: return L#Error;
+// Stringify macro for error code names
+#define BASS_ERROR_CASE(err) \
+	case err:                \
+		return L#err;
 
-LPCWSTR ReturnBASSError(INT ErrorCode) {
-	switch (ErrorCode) {
-	Case(BASS_ERROR_ALREADY)
-	Case(BASS_ERROR_BUFLOST)
-	Case(BASS_ERROR_BUSY)
-	Case(BASS_ERROR_CODEC)
-	Case(BASS_ERROR_CREATE)
-	Case(BASS_ERROR_DECODE)
-	Case(BASS_ERROR_DEVICE)
-	Case(BASS_ERROR_DRIVER)
-	Case(BASS_ERROR_DX)
-	Case(BASS_ERROR_EMPTY)
-	Case(BASS_ERROR_ENDED)
-	Case(BASS_ERROR_FILEFORM)
-	Case(BASS_ERROR_FILEOPEN)
-	Case(BASS_ERROR_FORMAT)
-	Case(BASS_ERROR_FREQ)
-	Case(BASS_ERROR_HANDLE)
-	Case(BASS_ERROR_ILLPARAM)
-	Case(BASS_ERROR_ILLTYPE)
-	Case(BASS_ERROR_INIT)
-	Case(BASS_ERROR_MEM)
-	Case(BASS_ERROR_MIDI_INCLUDE)
-	Case(BASS_ERROR_NO3D)
-	Case(BASS_ERROR_NOCHAN)
-	Case(BASS_ERROR_NOEAX)
-	Case(BASS_ERROR_NOFX)
-	Case(BASS_ERROR_NOHW)
-	Case(BASS_ERROR_NONET)
-	Case(BASS_ERROR_NOPLAY)
-	Case(BASS_ERROR_NOTAVAIL)
-	Case(BASS_ERROR_NOTFILE)
-	Case(BASS_ERROR_POSITION)
-	Case(BASS_ERROR_SPEAKER)
-	Case(BASS_ERROR_SSL)
-	Case(BASS_ERROR_START)
-	Case(BASS_ERROR_TIMEOUT)
-	Case(BASS_ERROR_UNKNOWN)
-	Case(BASS_ERROR_VERSION)
-	Case(BASS_ERROR_WASAPI)
-	Case(BASS_ERROR_WASAPI_BUFFER)
-	Case(BASS_ERROR_WASAPI_RAW)
-	Case(BASS_ERROR_WASAPI_DENIED)
-	Case(BASS_OK)
-	default: return L"Unknown error.";
+static LPCWSTR GetBASSErrorName(INT code)
+{
+	switch (code)
+	{
+		BASS_ERROR_CASE(BASS_OK)
+		BASS_ERROR_CASE(BASS_ERROR_MEM)
+		BASS_ERROR_CASE(BASS_ERROR_FILEOPEN)
+		BASS_ERROR_CASE(BASS_ERROR_DRIVER)
+		BASS_ERROR_CASE(BASS_ERROR_BUFLOST)
+		BASS_ERROR_CASE(BASS_ERROR_HANDLE)
+		BASS_ERROR_CASE(BASS_ERROR_FORMAT)
+		BASS_ERROR_CASE(BASS_ERROR_POSITION)
+		BASS_ERROR_CASE(BASS_ERROR_INIT)
+		BASS_ERROR_CASE(BASS_ERROR_START)
+		BASS_ERROR_CASE(BASS_ERROR_SSL)
+		BASS_ERROR_CASE(BASS_ERROR_ALREADY)
+		BASS_ERROR_CASE(BASS_ERROR_NOCHAN)
+		BASS_ERROR_CASE(BASS_ERROR_ILLTYPE)
+		BASS_ERROR_CASE(BASS_ERROR_ILLPARAM)
+		BASS_ERROR_CASE(BASS_ERROR_NO3D)
+		BASS_ERROR_CASE(BASS_ERROR_NOEAX)
+		BASS_ERROR_CASE(BASS_ERROR_DEVICE)
+		BASS_ERROR_CASE(BASS_ERROR_NOPLAY)
+		BASS_ERROR_CASE(BASS_ERROR_FREQ)
+		BASS_ERROR_CASE(BASS_ERROR_NOTFILE)
+		BASS_ERROR_CASE(BASS_ERROR_NOHW)
+		BASS_ERROR_CASE(BASS_ERROR_EMPTY)
+		BASS_ERROR_CASE(BASS_ERROR_NONET)
+		BASS_ERROR_CASE(BASS_ERROR_CREATE)
+		BASS_ERROR_CASE(BASS_ERROR_NOFX)
+		BASS_ERROR_CASE(BASS_ERROR_NOTAVAIL)
+		BASS_ERROR_CASE(BASS_ERROR_DECODE)
+		BASS_ERROR_CASE(BASS_ERROR_DX)
+		BASS_ERROR_CASE(BASS_ERROR_TIMEOUT)
+		BASS_ERROR_CASE(BASS_ERROR_FILEFORM)
+		BASS_ERROR_CASE(BASS_ERROR_SPEAKER)
+		BASS_ERROR_CASE(BASS_ERROR_VERSION)
+		BASS_ERROR_CASE(BASS_ERROR_CODEC)
+		BASS_ERROR_CASE(BASS_ERROR_ENDED)
+		BASS_ERROR_CASE(BASS_ERROR_BUSY)
+		BASS_ERROR_CASE(BASS_ERROR_WASAPI)
+		BASS_ERROR_CASE(BASS_ERROR_WASAPI_BUFFER)
+		BASS_ERROR_CASE(BASS_ERROR_WASAPI_RAW)
+		BASS_ERROR_CASE(BASS_ERROR_WASAPI_DENIED)
+		BASS_ERROR_CASE(BASS_ERROR_MIDI_INCLUDE)
+		BASS_ERROR_CASE(BASS_ERROR_UNKNOWN)
+	default:
+		return L"BASS_ERROR_UNKNOWN";
 	}
 }
 
-LPCWSTR ReturnBASSErrorDesc(INT ErrorCode) {
-	switch (ErrorCode) {
-	case -1: return L"Unknown error.";
-	case 0: return L"No error detected.";
-	case 1: return L"No enough memory available.";
-	case 2: return L"The file could not be opened.";
-	case 3: return L"There is no available device driver. The device may already be in use.";
-	case 4: return L"The sample buffer was lost.";
-	case 5: return L"An invalid handle has been used.";
-	case 6: return L"The sample format is not supported by the output device.";
-	case 7: return L"The requested position is invalid, eg. it is beyond the end or the download has not yet reached it.";
-	case 8: return L"BASS_Init has not been called yet.";
-	case 9: return L"BASS_Start has not been called yet.";
-	case 10: return L"SSL/HTTPS support isn't available.";
-	case 14: return L"The stream handle has been already initialized, or BASS_Init has been already called.";
-	case 18: return L"No free channels are available.";
-	case 19: return L"An illegal definition was specified.";
-	case 20: return L"An illegal parameter was specified.";
-	case 21: return L"The selected DirectSound output does not support DirectSound3D.";
-	case 22: return L"The selected DirectSound output does not support hardware EAX.";
-	case 23: return L"Invalid device ID.";
-	case 24: return L"The stream is not playing.";
-	case 25: return L"Invalid audio frequency selected.";
-	case 27: return L"The stream is not a file stream.";
-	case 29: return L"No hardware voices available.";
-	case 31: return L"The MOD sequence has no data.";
-	case 32: return L"No Internet connection could be made.";
-	case 33: return L"Couldn't create the file.";
-	case 34: return L"Effects are not available with the selected device.";
-	case 37: return L"The requested data is not available yet.";
-	case 38: return L"The stream is a \"decoding stream\"";
-	case 39: return L"DirectSoundCreate8 failed.";
-	case 40: return L"Connection timed out.";
-	case 41: return L"Unsupported file format.";
-	case 42: return L"Speakers configuration unavailable.";
-	case 43: return L"BASS version mismatch.";
-	case 44: return L"Codec is not available or supported.";
-	case 45: return L"The stream has ended.";
-	case 46: return L"The device is busy. It might be in use in exclusive mode by another application, or it might not be ready to accept incoming streams.";
-	case 5000: return L"WASAPI is not available in this system.";
-	case 5001: return L"WASAPI buffer size is not valid.";
-	case 5002: return L"RAW mode is not supported by your output device's APO filters.";
-	case 5003: return L"Couldn't open the WASAPI device, access denied.";
-	case 7000: return L"An SFZ #include directive file could not be opened.";
-	default: return L"No description available.";
+static LPCWSTR GetBASSErrorDescription(INT code)
+{
+	switch (code)
+	{
+	case BASS_OK:
+		return L"No error.";
+	case BASS_ERROR_MEM:
+		return L"Out of memory.";
+	case BASS_ERROR_FILEOPEN:
+		return L"Can't open the file.";
+	case BASS_ERROR_DRIVER:
+		return L"No available driver. Device may be in use.";
+	case BASS_ERROR_BUFLOST:
+		return L"Sample buffer was lost.";
+	case BASS_ERROR_HANDLE:
+		return L"Invalid handle.";
+	case BASS_ERROR_FORMAT:
+		return L"Sample format not supported by device.";
+	case BASS_ERROR_POSITION:
+		return L"Invalid position (beyond end or not downloaded yet).";
+	case BASS_ERROR_INIT:
+		return L"BASS_Init hasn't been called.";
+	case BASS_ERROR_START:
+		return L"BASS_Start hasn't been called.";
+	case BASS_ERROR_SSL:
+		return L"SSL/HTTPS not available.";
+	case BASS_ERROR_ALREADY:
+		return L"Already initialized.";
+	case BASS_ERROR_NOCHAN:
+		return L"No free channels available.";
+	case BASS_ERROR_ILLTYPE:
+		return L"Illegal type specified.";
+	case BASS_ERROR_ILLPARAM:
+		return L"Illegal parameter.";
+	case BASS_ERROR_NO3D:
+		return L"No 3D support.";
+	case BASS_ERROR_NOEAX:
+		return L"No EAX support.";
+	case BASS_ERROR_DEVICE:
+		return L"Invalid device.";
+	case BASS_ERROR_NOPLAY:
+		return L"Not playing.";
+	case BASS_ERROR_FREQ:
+		return L"Illegal sample rate.";
+	case BASS_ERROR_NOTFILE:
+		return L"Not a file stream.";
+	case BASS_ERROR_NOHW:
+		return L"No hardware voices available.";
+	case BASS_ERROR_EMPTY:
+		return L"MOD has no sequence data.";
+	case BASS_ERROR_NONET:
+		return L"No internet connection.";
+	case BASS_ERROR_CREATE:
+		return L"Couldn't create the file.";
+	case BASS_ERROR_NOFX:
+		return L"Effects not available.";
+	case BASS_ERROR_NOTAVAIL:
+		return L"Requested data not available.";
+	case BASS_ERROR_DECODE:
+		return L"Channel is a decoding channel.";
+	case BASS_ERROR_DX:
+		return L"DirectX init failed.";
+	case BASS_ERROR_TIMEOUT:
+		return L"Connection timed out.";
+	case BASS_ERROR_FILEFORM:
+		return L"Unsupported file format.";
+	case BASS_ERROR_SPEAKER:
+		return L"Speaker config unavailable.";
+	case BASS_ERROR_VERSION:
+		return L"BASS version mismatch.";
+	case BASS_ERROR_CODEC:
+		return L"Codec not available.";
+	case BASS_ERROR_ENDED:
+		return L"Stream has ended.";
+	case BASS_ERROR_BUSY:
+		return L"Device busy (exclusive mode or not ready).";
+	case BASS_ERROR_WASAPI:
+		return L"WASAPI not available.";
+	case BASS_ERROR_WASAPI_BUFFER:
+		return L"Invalid WASAPI buffer size.";
+	case BASS_ERROR_WASAPI_RAW:
+		return L"RAW mode not supported by device APO.";
+	case BASS_ERROR_WASAPI_DENIED:
+		return L"WASAPI access denied.";
+	case BASS_ERROR_MIDI_INCLUDE:
+		return L"SFZ #include file not found.";
+	default:
+		return L"Unknown error.";
 	}
 }
 
-LPCWSTR ReturnBASSErrorFix(INT ErrorCode) {
-	switch (ErrorCode) {
-	case -1:
-		return L"The cause of the error is unknown, no description is available.";
-	case 0: 
-		return L"Nothing wrong happened. You shouldn't be able to see this error.";
-	case 1: 
-		return L"There's not enough available memory for the driver.\nIt might be caused by a really big SoundFont, or by the app itself.\n\nTry using a smaller SoundFont, or switch to the 64-bit version of the app, if available.";
-	case 2: 
-		return L"Ensure the file you selected actually exists, and if the drive hosting the file is online.";
-	case 3: 
-		return L"Another app might've took exclusive use of the selected audio device. Try closing all the other audio applications, then try again. Ensure you're not running another exclusive-mode instance of OmniMIDI.";
-	case 4: 
-		return L"The sound card might've timed out, or the buffer size might not be big enough for it to handle. Try increasing the buffer size, or switch to another audio device.";
-	case 6: case 25:
-		return L"You're using an audio frequency that isn't supported by the device. If it still works after pressing OK, then ignore this message, otherwise change the frequency in the configurator.";	
-	case 18:
-		return L"BASS or BASSMIDI are unable to allocate a stream channel. If you're using VirtualMIDISynth 1.x, please uninstall it, otherwise restart the application.";
-	case 20:
-		return L"The ASIO/WASAPI device might be incompatible with a certain function you enabled in the settings. Try disabling that specific function, otherwise switch to another device";
-	case 23:
-		return L"The device you selected doesn't exist. Check the selected device in the configurator.";
-	case 24: case 35:
-		return L"The driver encountered an error, and called the same function twice. Restart the application.";
-	case 33:
-		return L"You might not have the required permissions to write the file, or BASS might have encountered an error while creating it.";
-	case 37:
-		return L"The audio data wasn't ready yet to be picked up. This can be caused by a timeout in the buffer system, or by a dead audio stream. Try restarting the application.";
-	case 42:
-		return L"BASS is unable to use the selected output. Make sure nothing is having exclusive control over it.";
-	case 46:
-		return L"Another app might've took exclusive use of the selected audio device. Try closing all the other audio applications, then try again. Ensure you're not running another exclusive-mode instance of OmniMIDI.";
-	case 5001:
-		return L"The buffer size you specified is either not valid or too small for the device to work. Try specifying another value.";
-	case 5002:
-		return L"This error could happen if the device driver is meant for Windows Vista/7, or if the APO filters don't support RAW mode. Try switching the audio driver to the stock Microsoft High Definition Audio driver, through Device Manager.";
-	case 7000:
-		return L"The SoundFont preset might be corrupted or invalid. Contact the original developer of the SoundFont, or use another one instead.";
-	case 5: case 8: case 11: case 12: case 13: case 15: case 16: case 17: case 19: case 38: case 43: case 5000: case 5003:
-		return L"This is a serious error, please restart the application.\nIf it happens again, contact KaleidonKep99.";
-	default: 
-		return L"The cause of the error is unknown, no description is available.";
+static LPCWSTR GetBASSErrorFix(INT code)
+{
+	switch (code)
+	{
+	case BASS_OK:
+		return L"Nothing's wrong. You shouldn't see this.";
+
+	case BASS_ERROR_MEM:
+		return L"Not enough memory. Try a smaller SoundFont, or use 64-bit if available.";
+
+	case BASS_ERROR_FILEOPEN:
+		return L"Check the file exists and the drive is accessible.";
+
+	case BASS_ERROR_DRIVER:
+	case BASS_ERROR_BUSY:
+		return L"Another app may have exclusive access to the device. "
+			   L"Close other audio apps or check for another OmniMIDI instance.";
+
+	case BASS_ERROR_BUFLOST:
+		return L"Sound card timed out. Try increasing buffer size or switch devices.";
+
+	case BASS_ERROR_FORMAT:
+	case BASS_ERROR_FREQ:
+		return L"Unsupported audio format. If playback works, ignore this. "
+			   L"Otherwise change the frequency in settings.";
+
+	case BASS_ERROR_NOCHAN:
+		return L"Can't allocate stream. If VirtualMIDISynth 1.x is installed, remove it.";
+
+	case BASS_ERROR_ILLPARAM:
+		return L"ASIO/WASAPI device may not support a setting. Try disabling it or switch devices.";
+
+	case BASS_ERROR_DEVICE:
+		return L"Device doesn't exist. Check your audio settings.";
+
+	case BASS_ERROR_NOPLAY:
+		return L"Driver error - restart the app.";
+
+	case BASS_ERROR_CREATE:
+		return L"Permission denied or BASS error creating file.";
+
+	case BASS_ERROR_NOTAVAIL:
+		return L"Audio data not ready. Could be a buffer timeout or dead stream. Restart the app.";
+
+	case BASS_ERROR_SPEAKER:
+		return L"Output unavailable. Make sure nothing has exclusive control.";
+
+	case BASS_ERROR_WASAPI_BUFFER:
+		return L"Buffer size invalid or too small. Try a different value.";
+
+	case BASS_ERROR_WASAPI_RAW:
+		return L"Device APO doesn't support RAW mode. Try the stock Microsoft HD Audio driver.";
+
+	case BASS_ERROR_MIDI_INCLUDE:
+		return L"SoundFont may be corrupted. Try a different one.";
+
+	case BASS_ERROR_HANDLE:
+	case BASS_ERROR_INIT:
+	case BASS_ERROR_ALREADY:
+	case BASS_ERROR_VERSION:
+	case BASS_ERROR_WASAPI:
+	case BASS_ERROR_WASAPI_DENIED:
+		return L"Restart the app. If it keeps happening, report an issue on GitHub.";
+
+	default:
+		return L"Unknown cause. Report an issue if this persists.";
 	}
 }
 
-void ShowError(int error, int mode, CHAR* engine, CHAR* codeline, int showerror) {
-	CHAR title[NTFS_MAX_PATH] = { 0 };
-	CHAR main[NTFS_MAX_PATH] = { 0 };
+// Find OmniMIDIDialog.exe path
+static BOOL GetDialogExePath(WCHAR *outPath, size_t outSize)
+{
+	WCHAR sysDir[MAX_PATH] = {0};
+	if (!GetSystemDirectoryW(sysDir, MAX_PATH))
+		return FALSE;
 
-	WCHAR WBE[512] = { 0 };
-	WCHAR WBED[512] = { 0 };
+	swprintf_s(outPath, outSize, L"%s\\OmniMIDI\\OmniMIDIDialog.exe", sysDir);
+	return GetFileAttributesW(outPath) != INVALID_FILE_ATTRIBUTES;
+}
 
-	CHAR BE[512] = { 0 };
-	CHAR BED[512] = { 0 };
-	CHAR BEF[512] = { 0 };
+// Escape argument for command line (wrap in quotes if needed)
+static void EscapeArg(char *dest, size_t destSize, const char *src)
+{
+	if (src == NULL || *src == '\0')
+	{
+		strcpy_s(dest, destSize, "\"\"");
+		return;
+	}
+	// Wrap in quotes and escape any internal quotes
+	sprintf_s(dest, destSize, "\"%s\"", src);
+}
 
-	swprintf_s(WBE, ReturnBASSError(error));
-	swprintf_s(WBED, ReturnBASSErrorDesc(error));
+// Forward to external dialog exe
+static BOOL LaunchDialogExe(int error, const char *engine, const char *context,
+							const char *errorName, const char *desc, const char *fix, BOOL isFatal)
+{
+	WCHAR exePath[MAX_PATH] = {0};
+	if (!GetDialogExePath(exePath, MAX_PATH))
+		return FALSE;
 
-	wcstombs(BE, ReturnBASSError(error), 512);
-	wcstombs(BED, ReturnBASSErrorDesc(error), 512);
-	wcstombs(BEF, ReturnBASSErrorFix(error), 512);
+	// Build command line
+	char cmdLine[4096] = {0};
+	char escapedName[256], escapedDesc[512], escapedFix[512], escapedContext[256], escapedEngine[64];
 
-	sprintf_s(main, sizeof(main), "%s encountered the following error: %s", engine, BE);
-	PrintBASSErrorMessageToDebugLog(WBE, WBED);
+	EscapeArg(escapedEngine, sizeof(escapedEngine), engine);
+	EscapeArg(escapedName, sizeof(escapedName), errorName);
+	EscapeArg(escapedDesc, sizeof(escapedDesc), desc);
+	EscapeArg(escapedFix, sizeof(escapedFix), fix);
+	EscapeArg(escapedContext, sizeof(escapedContext), context);
 
-	if (showerror) {
-		sprintf_s(title, sizeof(title), "OmniMIDI - %s execution error", engine);
-		sprintf_s(main + strlen(main), sizeof(main), " (E%d)", error);
+	sprintf_s(cmdLine, sizeof(cmdLine),
+			  "\"%S\" --type error --engine %s --code %d --name %s --desc %s --fix %s --context %s%s",
+			  exePath, escapedEngine, error, escapedName, escapedDesc, escapedFix, escapedContext,
+			  isFatal ? " --fatal" : "");
 
-		if (mode == 0) 
-			sprintf_s(main + strlen(main), sizeof(main), "\n\nCode line error: %s", codeline);
+	// Launch process
+	STARTUPINFOA si = {0};
+	PROCESS_INFORMATION pi = {0};
+	si.cb = sizeof(si);
 
-		sprintf_s(main + strlen(main), sizeof(main), "\n\nExplanation: %s", BED);
+	if (!CreateProcessA(NULL, cmdLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+		return FALSE;
 
-		sprintf_s(main + strlen(main), sizeof(main),
-			mode ? "\n\nWhat might have caused this error:\n%s" : "\n\nPossible fixes:\n%s", 
-			mode ? codeline : BEF
-		);
+	// Wait for dialog to close
+	WaitForSingleObject(pi.hProcess, INFINITE);
 
-		if (!_stricmp(engine, "BASSASIO") && error != -1) {
-			strcat_s(main, sizeof(main), "\n\nChange the device through the configurator, then try again.\nTo change it, please open the configurator, and go to \"More settings > Advanced audio settings > Change default audio output\"");
-		}
+	DWORD exitCode = 0;
+	GetExitCodeProcess(pi.hProcess, &exitCode);
 
-		strcat_s(main, sizeof(main), "\n\nIf you're unsure about what this means, please take a screenshot, and give it to KaleidonKep99.");
+	CloseHandle(pi.hProcess);
+	CloseHandle(pi.hThread);
 
-		MessageBoxA(NULL, main, title, MB_OK | MB_ICONERROR);
+	return TRUE;
+}
 
-		if ((error == -1 ||
-			error >= 2 && error <= 10 ||
-			error == 19 ||
-			error >= 24 && error <= 26 ||
-			error == 44) && showerror)
-		{
-			exit(ERROR_INVALID_FUNCTION);
-		}
+// Fallback to MessageBox if dialog exe not available
+static void ShowMessageBoxFallback(int error, const char *engine, const char *context,
+								   const char *errorName, const char *desc, const char *fix)
+{
+	char title[256] = {0};
+	char msg[2048] = {0};
+
+	sprintf_s(title, "OmniMIDI - %s Error", engine);
+	sprintf_s(msg, "%s error: %s (E%d)\n\n%s", engine, errorName, error, desc);
+
+	if (context && *context)
+		sprintf_s(msg + strlen(msg), sizeof(msg) - strlen(msg), "\n\nContext: %s", context);
+
+	sprintf_s(msg + strlen(msg), sizeof(msg) - strlen(msg), "\n\nSuggested fix:\n%s", fix);
+
+	if (_stricmp(engine, "BASSASIO") == 0 && error != BASS_ERROR_UNKNOWN)
+		strcat_s(msg, "\n\nTry changing the ASIO device in the configurator.");
+
+	strcat_s(msg, "\n\nReport issues at github.com/FrozenSnowy/OmniMIDI-Permafrost");
+
+	MessageBoxA(NULL, msg, title, MB_OK | MB_ICONERROR);
+}
+
+// Show error dialog and log it
+static void ShowBASSError(int error, int mode, const char *engine, const char *context, int showDialog)
+{
+	WCHAR errorNameW[128] = {0};
+	WCHAR errorDescW[256] = {0};
+
+	wcscpy_s(errorNameW, GetBASSErrorName(error));
+	wcscpy_s(errorDescW, GetBASSErrorDescription(error));
+
+	// Always log
+	PrintBASSErrorMessageToDebugLog(errorNameW, errorDescW);
+
+	if (!showDialog)
+		return;
+
+	// Convert wide strings to narrow
+	char errorName[128] = {0};
+	char desc[256] = {0};
+	char fix[512] = {0};
+	wcstombs(errorName, errorNameW, 128);
+	wcstombs(desc, errorDescW, 256);
+	wcstombs(fix, GetBASSErrorFix(error), 512);
+
+	// Check if this is a fatal error
+	BOOL isFatal = (error == BASS_ERROR_UNKNOWN ||
+					(error >= BASS_ERROR_FILEOPEN && error <= BASS_ERROR_SSL) ||
+					error == BASS_ERROR_ILLTYPE ||
+					(error >= BASS_ERROR_NOPLAY && error <= BASS_ERROR_NOTFILE) ||
+					error == BASS_ERROR_CODEC);
+
+	// Try modern dialog first, fallback to MessageBox
+	if (!LaunchDialogExe(error, engine, context, errorName, desc, fix, isFatal))
+	{
+		ShowMessageBoxFallback(error, engine, context, errorName, desc, fix);
+	}
+
+	if (isFatal)
+	{
+		exit(ERROR_INVALID_FUNCTION);
 	}
 }
 
-BOOL CheckUp(BOOL IsASIO, int mode, CHAR* codeline, bool showerror) {
-	int error = IsASIO ? BASS_ASIO_ErrorGetCode() : BASS_ErrorGetCode();
-	if (error != 0) {
-		ShowError(error, mode, IsASIO ? "BASSASIO" : "BASS", codeline, showerror);
+// Check for BASS/BASSASIO errors and show dialog if needed
+static BOOL CheckBASSError(BOOL isASIO, int mode, const char *context, BOOL showError)
+{
+	int error = isASIO ? BASS_ASIO_ErrorGetCode() : BASS_ErrorGetCode();
+	if (error != BASS_OK)
+	{
+		ShowBASSError(error, mode, isASIO ? "BASSASIO" : "BASS", context, showError);
 		return FALSE;
 	}
 	return TRUE;
 }
+
+// Backwards compatibility aliases
+#define ReturnBASSError GetBASSErrorName
+#define ReturnBASSErrorDesc GetBASSErrorDescription
+#define ReturnBASSErrorFix GetBASSErrorFix
+#define ShowError ShowBASSError
+#define CheckUp CheckBASSError

@@ -126,3 +126,6 @@ OmniMIDIv2/Release (WINNTCRT)/
 *.tlog
 /OmniMIDI/OmniMIDI/Release
 /OmniMIDI/OmniMIDI/Debug
+/OmniMIDIErrorDialog/bin
+/OmniMIDIErrorDialog/obj
+/OmniMIDIErrorDialog

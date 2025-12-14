@@ -465,32 +465,29 @@ DWORD CALLBACK ProcData(void *buffer, DWORD length, void *user)
 	// Permafrost takeover?
 	if (AudioBus_IsTakeoverActive())
 	{
-		DWORD sampleCount = length / sizeof(float);
+		DWORD floatCount = length / sizeof(float);
 
-		// Simple sync path - send audio, wait, receive. Adds latency but works.
-
-		// Send to Permafrost
+		// Send audio to Permafrost via shared memory
 		float *outBuffer = AudioBus_GetOutChannelBuffer(0, g_AudioBusPtr->OutWriteIndex & 1);
-		if (outBuffer && sampleCount <= AUDIOBUS_BUFFER_SAMPLES * AUDIOBUS_STEREO)
+		if (outBuffer && floatCount <= AUDIOBUS_MAX_BUFFER_SAMPLES * AUDIOBUS_STEREO)
 		{
 			memcpy(outBuffer, buffer, length);
-			g_AudioBusPtr->CurrentFrameSamples = sampleCount;
+			g_AudioBusPtr->CurrentFrameSamples = floatCount;
 		}
 		AudioBus_SwapOutBuffer();
 		AudioBus_SignalAudioReady();
 
-		// Wait for Permafrost (blocking)
-		if (AudioBus_WaitForProcessedAudio(50)) // 50ms should be plenty
+		// Wait for Permafrost to process
+		if (AudioBus_WaitForProcessedAudio(50))
 		{
 			// Read processed audio back
-			DWORD stereoSamples = sampleCount / 2;
-			if (AudioBus_ReadProcessedAudio((float *)buffer, stereoSamples))
+			if (AudioBus_ReadProcessedAudio((float *)buffer, floatCount / AUDIOBUS_STEREO))
 			{
 				AudioBus_RecordAudioOutput();
 				return data;
 			}
 		}
-		// Timed out or failed - fall back to direct
+		// Timeout - fall through to direct output
 	}
 
 	// Direct output - buffer already has BASSMIDI data
