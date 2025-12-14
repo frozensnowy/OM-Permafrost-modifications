@@ -226,300 +226,230 @@ void PrintCurrentTimeW()
 
 void PrintHexToDebugLog(DWORD_PTR a, DWORD_PTR b)
 {
-	if (ManagedSettings.DebugMode)
-	{
-		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
+	if (!ManagedSettings.DebugMode)
+		return;
 
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
+	char Msg[NTFS_MAX_PATH];
+	std::lock_guard<std::mutex> lock(DebugMutex);
 
-		// Print to log
-		PrintCurrentTime();
-		sprintf(Msg, "Stage <<BM>> | noLRS-> %x, LRS-> %x", a, b);
+	PrintCurrentTime();
+	sprintf(Msg, "Stage <<BM>> | noLRS-> %x, LRS-> %x", a, b);
 
-		fprintf(DebugLog, Msg);
-		OutputDebugStringA(Msg);
-
-		free(Msg);
-
-		// Flush buffer
-		fflush(DebugLog);
-	}
+	fprintf(DebugLog, Msg);
+	OutputDebugStringA(Msg);
+	fflush(DebugLog);
 }
 
 void PrintMMToDebugLog(UINT uDID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
 {
-	if (ManagedSettings.DebugMode)
+	if (!ManagedSettings.DebugMode)
+		return;
+
+	char Msg[NTFS_MAX_PATH];
+	std::lock_guard<std::mutex> lock(DebugMutex);
+
+	PrintCurrentTime();
+	try
 	{
-		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
-
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
-
-		// Print to log
-		PrintCurrentTime();
-		try
-		{
-			sprintf(Msg, "Stage <<modMessage>> | uDeviceID-> %d, uMsg-> %d, dwUser-> %d (LPVOID: %d), dwParam1-> %d, dwParam2-> %d",
-					uDID, uMsg, (DWORD)dwUser, *(DWORD_PTR *)dwUser, (DWORD)dwParam1, (DWORD)dwParam2);
-		}
-		catch (...)
-		{
-			sprintf(Msg, "Stage <<modMessage>> | uDeviceID-> %d, uMsg-> %d, dwUser-> %d (LPVOID: FAIL), dwParam1-> %d, dwParam2-> %d",
-					uDID, uMsg, (DWORD)dwUser, (DWORD)dwParam1, (DWORD)dwParam2);
-		}
-
-		fprintf(DebugLog, Msg);
-		OutputDebugStringA(Msg);
-
-		free(Msg);
-
-		// Flush buffer
-		fflush(DebugLog);
+		sprintf(Msg, "Stage <<modMessage>> | uDeviceID-> %d, uMsg-> %d, dwUser-> %d (LPVOID: %d), dwParam1-> %d, dwParam2-> %d",
+				uDID, uMsg, (DWORD)dwUser, *(DWORD_PTR *)dwUser, (DWORD)dwParam1, (DWORD)dwParam2);
 	}
+	catch (...)
+	{
+		sprintf(Msg, "Stage <<modMessage>> | uDeviceID-> %d, uMsg-> %d, dwUser-> %d (LPVOID: FAIL), dwParam1-> %d, dwParam2-> %d",
+				uDID, uMsg, (DWORD)dwUser, (DWORD)dwParam1, (DWORD)dwParam2);
+	}
+
+	fprintf(DebugLog, Msg);
+	OutputDebugStringA(Msg);
+	fflush(DebugLog);
 }
 
 void PrintLoadedDLLToDebugLog(LPCWSTR LibraryW, LPCSTR Status)
 {
-	if (ManagedSettings.DebugMode)
-	{
-		wchar_t *Lib = (wchar_t *)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
-		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
+	if (!ManagedSettings.DebugMode)
+		return;
 
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
+	wchar_t Lib[NTFS_MAX_PATH];
+	char Msg[NTFS_MAX_PATH];
+	std::lock_guard<std::mutex> lock(DebugMutex);
 
-		// Print to log
-		PrintCurrentTime();
-		swprintf(Lib, L"Library <<%s>> | ", LibraryW);
-		fwprintf(DebugLog, Lib);
-		OutputDebugStringW(Lib);
+	PrintCurrentTime();
+	swprintf(Lib, L"Library <<%s>> | ", LibraryW);
+	fwprintf(DebugLog, Lib);
+	OutputDebugStringW(Lib);
 
-		sprintf(Msg, "%s\n", Status);
-		fprintf(DebugLog, Msg);
-		OutputDebugStringA(Msg);
-
-		free(Lib);
-		free(Msg);
-
-		// Flush buffer
-		fflush(DebugLog);
-	}
+	sprintf(Msg, "%s\n", Status);
+	fprintf(DebugLog, Msg);
+	OutputDebugStringA(Msg);
+	fflush(DebugLog);
 }
 
 void PrintSoundFontToDebugLog(LPCWSTR SoundFontW, LPCSTR Status)
 {
-	if (ManagedSettings.DebugMode)
-	{
-		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
-		char *SoundFontA = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
+	if (!ManagedSettings.DebugMode)
+		return;
 
-		wcstombs(SoundFontA, SoundFontW, wcslen(SoundFontW) + 1);
-		LPSTR SoundFontNameA = PathFindFileNameA(SoundFontA);
+	char Msg[NTFS_MAX_PATH];
+	char SoundFontA[NTFS_MAX_PATH];
 
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
+	wcstombs(SoundFontA, SoundFontW, wcslen(SoundFontW) + 1);
+	LPSTR SoundFontNameA = PathFindFileNameA(SoundFontA);
 
-		// Print to log
-		PrintCurrentTime();
-		sprintf(Msg, "Stage <<NewSFLoader>> | SoundFont \"%s\" -> %s\n", SoundFontNameA, Status);
-		fprintf(DebugLog, Msg);
-		OutputDebugStringA(Msg);
+	std::lock_guard<std::mutex> lock(DebugMutex);
 
-		free(Msg);
-		free(SoundFontA);
-
-		// Flush buffer
-		fflush(DebugLog);
-	}
+	PrintCurrentTime();
+	sprintf(Msg, "Stage <<NewSFLoader>> | SoundFont \"%s\" -> %s\n", SoundFontNameA, Status);
+	fprintf(DebugLog, Msg);
+	OutputDebugStringA(Msg);
+	fflush(DebugLog);
 }
 
 void PrintCallbackToDebugLog(LPCSTR Stage, HMIDI OMHM, DWORD_PTR OMCB, DWORD_PTR OMI, DWORD_PTR OMU, DWORD OMCM)
 {
-	if (ManagedSettings.DebugMode)
-	{
-		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
+	if (!ManagedSettings.DebugMode)
+		return;
 
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
+	char Msg[NTFS_MAX_PATH];
+	std::lock_guard<std::mutex> lock(DebugMutex);
 
-		// Print to log
-		PrintCurrentTime();
-
-		sprintf(
-			Msg,
-			"Stage <<%s>> | OMHM: %08X - OMCB: %08X - OMI: %08X - OMU: %08X - OMCM: %08X\n",
+	PrintCurrentTime();
+	sprintf(Msg, "Stage <<%s>> | OMHM: %08X - OMCB: %08X - OMI: %08X - OMU: %08X - OMCM: %08X\n",
 			Stage, (DWORD)OMHM, (DWORD)OMCB, (DWORD)OMI, (DWORD)OMU, (DWORD)OMCM);
 
-		fprintf(DebugLog, Msg);
-		OutputDebugStringA(Msg);
-
-		free(Msg);
-
-		// Flush buffer
-		fflush(DebugLog);
-	}
+	fprintf(DebugLog, Msg);
+	OutputDebugStringA(Msg);
+	fflush(DebugLog);
 }
 
 void PrintMessageToDebugLog(LPCSTR Stage, LPCSTR Status)
 {
-	if (ManagedSettings.DebugMode)
-	{
-		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
+	if (!ManagedSettings.DebugMode)
+		return;
 
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
+	char Msg[NTFS_MAX_PATH];
+	std::lock_guard<std::mutex> lock(DebugMutex);
 
-		// Print to log
-		PrintCurrentTime();
-		sprintf(Msg, "Stage <<%s>> | %s\n", Stage, Status);
-		fprintf(DebugLog, Msg);
-		OutputDebugStringA(Msg);
-
-		free(Msg);
-
-		// Flush buffer
-		fflush(DebugLog);
-
-		Sleep(1);
-	}
+	PrintCurrentTime();
+	sprintf(Msg, "Stage <<%s>> | %s\n", Stage, Status);
+	fprintf(DebugLog, Msg);
+	OutputDebugStringA(Msg);
+	fflush(DebugLog);
 }
 
 void PrintMessageWToDebugLog(LPCWSTR Stage, LPCWSTR Status)
 {
-	if (ManagedSettings.DebugMode)
-	{
-		wchar_t *Msg = (wchar_t *)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
+	if (!ManagedSettings.DebugMode)
+		return;
 
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
+	wchar_t Msg[NTFS_MAX_PATH];
+	std::lock_guard<std::mutex> lock(DebugMutex);
 
-		// Print to log
-		PrintCurrentTimeW();
-		swprintf(Msg, L"Stage <<%s>> | %s\n", Stage, Status);
-		fwprintf(DebugLog, Msg);
-		OutputDebugStringW(Msg);
-
-		free(Msg);
-
-		// Flush buffer
-		fflush(DebugLog);
-	}
+	PrintCurrentTimeW();
+	swprintf(Msg, L"Stage <<%s>> | %s\n", Stage, Status);
+	fwprintf(DebugLog, Msg);
+	OutputDebugStringW(Msg);
+	fflush(DebugLog);
 }
 
 void PrintBoolToDebugLog(LPCSTR Stage, BOOL Status)
 {
-	if (ManagedSettings.DebugMode)
-	{
-		char *Msg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
+	if (!ManagedSettings.DebugMode)
+		return;
 
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
+	char Msg[NTFS_MAX_PATH];
+	std::lock_guard<std::mutex> lock(DebugMutex);
 
-		// Print to log
-		PrintCurrentTime();
-		sprintf(Msg, "Stage <<%s>> | %s\n", Stage, Status ? "TRUE" : "FALSE");
-		fprintf(DebugLog, Msg);
-		OutputDebugStringA(Msg);
-
-		free(Msg);
-
-		// Flush buffer
-		fflush(DebugLog);
-	}
+	PrintCurrentTime();
+	sprintf(Msg, "Stage <<%s>> | %s\n", Stage, Status ? "TRUE" : "FALSE");
+	fprintf(DebugLog, Msg);
+	OutputDebugStringA(Msg);
+	fflush(DebugLog);
 }
 
 void PrintVarToDebugLog(LPCSTR Stage, LPCSTR ValueName, void *Var, int Type)
 {
-	if (ManagedSettings.DebugMode)
+	if (!ManagedSettings.DebugMode)
+		return;
+
+	char AMsg[NTFS_MAX_PATH];
+	wchar_t WMsg[NTFS_MAX_PATH];
+	std::lock_guard<std::mutex> lock(DebugMutex);
+
+	PrintCurrentTime();
+	switch (Type)
 	{
-		char *AMsg = (char *)malloc(sizeof(char) * NTFS_MAX_PATH);
-		wchar_t *WMsg = (wchar_t *)malloc(sizeof(wchar_t) * NTFS_MAX_PATH);
-
-		// Debug log is busy now
-		std::lock_guard<std::mutex> lock(DebugMutex);
-
-		// Print to log
-		PrintCurrentTime();
-		switch (Type)
-		{
-		case PRINT_INT32:
-		{
-			int I32Var = *(long *)Var;
-			sprintf(AMsg, "Stage <<%s>> | %s: %i (HEX: %08X, 32-bit integer)\n", Stage, ValueName, I32Var, I32Var);
-			fprintf(DebugLog, AMsg);
-			OutputDebugStringA(AMsg);
-			break;
-		}
-		case PRINT_UINT32:
-		{
-			int U32Var = *(unsigned long *)Var;
-			sprintf(AMsg, "Stage <<%s>> | %s: %u (HEX: %08X, 32-bit unsigned integer)\n", Stage, ValueName, U32Var, U32Var);
-			fprintf(DebugLog, AMsg);
-			OutputDebugStringA(AMsg);
-			break;
-		}
-		case PRINT_INT64:
-		{
-			int I64Var = *(long long *)Var;
-			sprintf(AMsg, "Stage <<%s>> | %s: %i (HEX: %016X, 64-bit integer)\n", Stage, ValueName, I64Var, I64Var);
-			fprintf(DebugLog, AMsg);
-			OutputDebugStringA(AMsg);
-			break;
-		}
-		case PRINT_UINT64:
-		{
-			int U64Var = *(unsigned long long *)Var;
-			sprintf(AMsg, "Stage <<%s>> | %s: %u (HEX: %016X, 64-bit unsigned integer)\n", Stage, ValueName, U64Var, U64Var);
-			fprintf(DebugLog, AMsg);
-			OutputDebugStringA(AMsg);
-			break;
-		}
-		case PRINT_FLOAT:
-		{
-			float FVar = *(float *)Var;
-			sprintf(AMsg, "Stage <<%s>> | %s: %f (float)\n", Stage, ValueName, FVar);
-			fprintf(DebugLog, AMsg);
-			OutputDebugStringA(AMsg);
-			break;
-		}
-		case PRINT_BOOL:
-		{
-			BOOL BVar = *(BOOL *)Var;
-			sprintf(AMsg, "Stage <<%s>> | %s: %s (bool)\n", Stage, ValueName, BVar ? "true" : "false");
-			fprintf(DebugLog, AMsg);
-			OutputDebugStringA(AMsg);
-			break;
-		}
-		case PRINT_CHAR:
-		{
-			sprintf(AMsg, "Stage <<%s>> | %s: %s (char)\n", Stage, ValueName, Var);
-			fprintf(DebugLog, AMsg);
-			OutputDebugStringA(AMsg);
-			break;
-		}
-		case PRINT_WCHAR:
-		{
-			swprintf(WMsg, L"Stage <<%S>> | %S: %s (wchar_t)\n", Stage, ValueName, Var);
-			fwprintf(DebugLog, WMsg);
-			OutputDebugStringW(WMsg);
-			break;
-		}
-		default:
-		{
-			sprintf(AMsg, "Stage <<%s>> | %s: unrecognized type! (Address of the unrecognized value: %08X)\n", Stage, ValueName, Var);
-			fprintf(DebugLog, AMsg);
-			OutputDebugStringA(AMsg);
-			break;
-		}
-		}
-
-		free(AMsg);
-		free(WMsg);
-
-		// Flush buffer
-		fflush(DebugLog);
+	case PRINT_INT32:
+	{
+		int I32Var = *(long *)Var;
+		sprintf(AMsg, "Stage <<%s>> | %s: %i (HEX: %08X, 32-bit integer)\n", Stage, ValueName, I32Var, I32Var);
+		fprintf(DebugLog, AMsg);
+		OutputDebugStringA(AMsg);
+		break;
 	}
+	case PRINT_UINT32:
+	{
+		int U32Var = *(unsigned long *)Var;
+		sprintf(AMsg, "Stage <<%s>> | %s: %u (HEX: %08X, 32-bit unsigned integer)\n", Stage, ValueName, U32Var, U32Var);
+		fprintf(DebugLog, AMsg);
+		OutputDebugStringA(AMsg);
+		break;
+	}
+	case PRINT_INT64:
+	{
+		int I64Var = *(long long *)Var;
+		sprintf(AMsg, "Stage <<%s>> | %s: %i (HEX: %016X, 64-bit integer)\n", Stage, ValueName, I64Var, I64Var);
+		fprintf(DebugLog, AMsg);
+		OutputDebugStringA(AMsg);
+		break;
+	}
+	case PRINT_UINT64:
+	{
+		int U64Var = *(unsigned long long *)Var;
+		sprintf(AMsg, "Stage <<%s>> | %s: %u (HEX: %016X, 64-bit unsigned integer)\n", Stage, ValueName, U64Var, U64Var);
+		fprintf(DebugLog, AMsg);
+		OutputDebugStringA(AMsg);
+		break;
+	}
+	case PRINT_FLOAT:
+	{
+		float FVar = *(float *)Var;
+		sprintf(AMsg, "Stage <<%s>> | %s: %f (float)\n", Stage, ValueName, FVar);
+		fprintf(DebugLog, AMsg);
+		OutputDebugStringA(AMsg);
+		break;
+	}
+	case PRINT_BOOL:
+	{
+		BOOL BVar = *(BOOL *)Var;
+		sprintf(AMsg, "Stage <<%s>> | %s: %s (bool)\n", Stage, ValueName, BVar ? "true" : "false");
+		fprintf(DebugLog, AMsg);
+		OutputDebugStringA(AMsg);
+		break;
+	}
+	case PRINT_CHAR:
+	{
+		sprintf(AMsg, "Stage <<%s>> | %s: %s (char)\n", Stage, ValueName, Var);
+		fprintf(DebugLog, AMsg);
+		OutputDebugStringA(AMsg);
+		break;
+	}
+	case PRINT_WCHAR:
+	{
+		swprintf(WMsg, L"Stage <<%S>> | %S: %s (wchar_t)\n", Stage, ValueName, Var);
+		fwprintf(DebugLog, WMsg);
+		OutputDebugStringW(WMsg);
+		break;
+	}
+	default:
+	{
+		sprintf(AMsg, "Stage <<%s>> | %s: unrecognized type! (Address of the unrecognized value: %08X)\n", Stage, ValueName, Var);
+		fprintf(DebugLog, AMsg);
+		OutputDebugStringA(AMsg);
+		break;
+	}
+	}
+	fflush(DebugLog);
 }
 
 void PrintBASSErrorMessageToDebugLog(LPCWSTR BE, LPCWSTR BED)
